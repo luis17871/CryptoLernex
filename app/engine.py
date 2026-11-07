@@ -40,6 +40,9 @@ class KronosEngine:
 
         from .vendor.kronos import Kronos, KronosTokenizer
 
+        import os
+        if os.environ.get("KRONOS_TORCH_THREADS"):
+            torch.set_num_threads(int(os.environ["KRONOS_TORCH_THREADS"]))
         if model_key not in MODELS:
             raise ValueError(f"unknown model {model_key}; options: {list(MODELS)}")
         spec = MODELS[model_key]
