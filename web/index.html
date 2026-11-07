@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kronos Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="dots"><i></i><i></i><i></i></span><b>KRONOS</b>&nbsp;FORECAST</div>
+  <select id="symbol"></select>
+  <select id="interval"></select>
+  <span class="chip" id="source">-</span>
+  <span class="chip live"><i class="pulse"></i><span id="liveTxt">live</span></span>
+  <div class="spacer"></div>
+  <span class="lastpx">last <b id="lastPx">-</b></span>
+</header>
+
+<main>
+  <section class="chartwrap card">
+    <div class="model card inset" id="modelCard"></div>
+    <div class="roundtag" id="roundTag">ROUND - / reading the spread</div>
+    <canvas id="chart"></canvas>
+    <div class="tooltip" id="tip"></div>
+    <div class="legend">
+      <span><i class="lg up"></i>path up</span><span><i class="lg dn"></i>path down</span>
+      <span><i class="lg med"></i>median</span><span><i class="lg band"></i>p10-p90</span>
+      <span><i class="lg real"></i>real</span>
+    </div>
+  </section>
+
+  <section class="grid">
+    <div class="card stat">
+      <div class="lbl"><span>NEXT <span class="H">24</span> - MEDIAN</span><span class="r" id="medRet"></span></div>
+      <div class="big" id="median">-</div>
+      <div class="kv"><span>p90</span><b id="p90">-</b></div>
+      <div class="kv"><span>p10</span><b id="p10">-</b></div>
+      <div class="kv"><span>spread</span><b id="spread">-</b></div>
+      <div class="kv"><span>VaR 95%</span><b id="var95">-</b></div>
+    </div>
+
+    <div class="card stat">
+      <div class="lbl">PATHS <span class="r" id="nPaths"></span></div>
+      <div class="updn"><b class="up" id="nUp">-</b><b class="dn" id="nDn">-</b></div>
+      <div class="pathbar" id="pathBar"></div>
+      <div class="kv"><span>P(up)</span><b id="probUp">-</b></div>
+      <div class="lbl sp">REGIME</div>
+      <div class="regime" id="regime">-</div>
+      <div class="kv"><span>trend / vol ratio</span><b id="trendVol">-</b></div>
+    </div>
+
+    <div class="card stat">
+      <div class="lbl">TOUCH PROBABILITY <span class="r">within horizon</span></div>
+      <table class="touch" id="touch"></table>
+      <div class="kv"><span>median peak / trough</span><b id="peakTrough">-</b></div>
+    </div>
+
+    <div class="card stat">
+      <div class="lbl">TRACK RECORD <span class="r" id="openRounds"></span></div>
+      <table class="score" id="scoreTbl"></table>
+      <div class="lbl sp">CALIBRATION (PIT) <span class="r">flat = honest</span></div>
+      <canvas id="pit" height="60"></canvas>
+    </div>
+
+    <div class="card term">
+      <div class="lbl">LOG <span class="r" id="engineName"></span></div>
+      <div id="log"></div>
+    </div>
+
+    <div class="card ctrl">
+      <div class="lbl">RUN FORECAST</div>
+      <label>horizon <input id="inH" type="number" min="1" max="240" value="24"></label>
+      <label>samples <input id="inN" type="number" min="1" max="1000" value="100"></label>
+      <label>temperature <input id="inT" type="number" min="0.05" max="3" step="0.05" value="1.0"></label>
+      <label>top_p <input id="inP" type="number" min="0.05" max="1" step="0.05" value="0.9"></label>
+      <button id="runBtn">RUN</button>
+      <a class="small" id="exportLnk" href="#">export CSV</a>
+      <p class="small warn" id="warn"></p>
+    </div>
+
+    <div class="card rounds">
+      <div class="lbl">ROUNDS <span class="r">click to replay</span></div>
+      <div class="tblwrap"><table id="roundsTbl"></table></div>
+    </div>
+  </section>
+  <p class="disclaimer">Modelo probabilístico experimental. No es asesoría financiera. Mira la tasa de acierto y la calibración antes de confiar en cualquier pronóstico.</p>
+</main>
+<script src="/static/app.js"></script>
+</body>
+</html>
