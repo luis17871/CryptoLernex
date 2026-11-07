@@ -111,3 +111,18 @@ def test_backtest_runs_with_both_engines():
     out = backtest_run(df, {"tiny": tiny_kronos(), "bootstrap": BootstrapEngine()}, horizon=4, rounds=3, step=5,
                        context=100, samples=10, temperature=1.0, top_p=0.9, progress=False)
     assert out["tiny"]["rounds"] == 3 and out["bootstrap"]["rounds"] == 3
+
+
+def test_forward_grade_only_complete_rounds():
+    from app.forward import binom_p, grade
+
+    df = _df(300)
+    hist = df.iloc[:250]
+    last = float(hist.close.iloc[-1])
+    paths = BootstrapEngine().sample(hist, _yts(hist, 10), 20, 1.0, 1.0, 0)[..., 3]
+    r = {"engine": "b", "anchor_ts": int(hist.timestamps.iloc[-1].timestamp()), "last_close": last, "horizon": 10,
+         "paths": paths.tolist(), "median": 0, "p10": 0, "p90": 0, "prob_up": 0.5, "regime": "CHOPPY"}
+    late = dict(r, anchor_ts=int(df.timestamps.iloc[-3].timestamp()))
+    g = grade([r, late], df)
+    assert len(g) == 1 and g.actual.iloc[0] == df.close.iloc[259]
+    assert binom_p(0, 10) == 1.0 and binom_p(10, 10) == 1 / 1024

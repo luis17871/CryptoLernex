@@ -21,7 +21,8 @@ from .engine import BootstrapEngine, KronosEngine
 
 
 def run(df: pd.DataFrame, engines: dict, horizon: int, rounds: int, step: int, context: int, samples: int,
-        temperature: float, top_p: float, seed: int = 0, progress: bool = True) -> dict:
+        temperature: float, top_p: float, seed: int = 0, progress: bool = True,
+        records: list | None = None) -> dict:
     sec = int((df["timestamps"].iloc[1] - df["timestamps"].iloc[0]).total_seconds())
     last_anchor = len(df) - horizon - 1
     anchors = [last_anchor - i * step for i in range(rounds)][::-1]
@@ -41,6 +42,13 @@ def run(df: pd.DataFrame, engines: dict, horizon: int, rounds: int, step: int, c
             sc = analytics.score(paths[..., 3], last, fut)
             sc["seconds"] = time.time() - t0
             res[name].append(sc)
+            if records is not None:
+                summ = analytics.summarize(paths, hist["close"].to_numpy())
+                records.append({"engine": name, "anchor": str(hist["timestamps"].iloc[-1]), "last_close": last,
+                                "median": summ["median"], "p10": summ["final"]["p10"], "p90": summ["final"]["p90"],
+                                "prob_up": summ["prob_up"], "regime": summ["regime"], "actual": float(fut[-1]),
+                                **{k: sc[k] for k in ("coverage", "inside_final", "direction_hit", "crps_skill",
+                                                      "skill", "seconds")}})
         if progress:
             line = " | ".join(f"{n}: dir {'HIT ' if r[-1]['direction_hit'] else 'miss'} cov {r[-1]['coverage']:.0%}"
                               for n, r in res.items())
@@ -64,7 +72,8 @@ def main() -> None:
     ap.add_argument("--rounds", type=int, default=40)
     ap.add_argument("--step", type=int, default=12)
     ap.add_argument("--baseline-only", action="store_true")
-    ap.add_argument("--json", help="write results to this file")
+    ap.add_argument("--json", help="write aggregate results to this file")
+    ap.add_argument("--csv", help="write one row per engine and round to this file")
     a = ap.parse_args()
 
     engines: dict = {}
@@ -76,7 +85,10 @@ def main() -> None:
     need = a.context + a.horizon + a.rounds * a.step + 5
     df = MarketData(a.source).candles(a.symbol, a.interval, need)
     print(f"{len(df)} candles {a.symbol} {a.interval}: {df.timestamps.iloc[0]} -> {df.timestamps.iloc[-1]}")
-    out = run(df, engines, a.horizon, a.rounds, a.step, a.context, a.samples, a.temperature, a.top_p)
+    recs: list = []
+    out = run(df, engines, a.horizon, a.rounds, a.step, a.context, a.samples, a.temperature, a.top_p, records=recs)
+    if a.csv:
+        pd.DataFrame(recs).to_csv(a.csv, index=False)
     print("\nengine          rounds  hit-rate  cover(p10-p90)  CRPS-skill  MAE-skill  s/round")
     for n, m in out.items():
         print(f"{n:<15} {m['rounds']:>6}  {m['hit_rate']:>8.1%}  {m['coverage']:>14.1%}  {m['crps_skill']:>10.1%}"
