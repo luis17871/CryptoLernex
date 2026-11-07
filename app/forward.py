@@ -37,39 +37,57 @@ def load_rounds(symbol: str, interval: str) -> list[dict]:
 
 
 def step(a) -> None:
+    """Record the newest closed candle and back-fill hourly anchors missed since the last run.
+
+    A back-filled round only sees candles up to its own anchor, so it is still out-of-sample;
+    it is flagged ``backfilled`` because it was computed after its anchor time.
+    """
     OUT.mkdir(parents=True, exist_ok=True)
     md = MarketData(a.source)
     model_key = a.model
     ctx = min(a.context, MODELS[model_key]["max_context"])
-    df = md.candles(a.symbol, a.interval, ctx)
-    anchor = int(df["timestamps"].iloc[-1].timestamp())
-    done = {(r["anchor_ts"], r["engine"]) for r in load_rounds(a.symbol, a.interval)}
     sec = INTERVALS[a.interval]
-    y_ts = pd.Series(pd.date_range(df["timestamps"].iloc[-1] + pd.Timedelta(seconds=sec), periods=a.horizon,
-                                   freq=f"{sec}s"))
-    engines = {}
-    if (anchor, model_key) not in done:
-        engines[model_key] = lambda: KronosEngine(model_key, a.weights_dir, "", 50)
-    if (anchor, "bootstrap") not in done:
-        engines["bootstrap"] = BootstrapEngine
-    if not engines:
-        print(f"anchor {df['timestamps'].iloc[-1]} already recorded")
+    df_all = md.candles(a.symbol, a.interval, ctx + a.backfill)
+    ts = (df_all["timestamps"] - pd.Timestamp(0, tz="UTC")).dt.total_seconds().astype(int).to_numpy()
+    rounds = load_rounds(a.symbol, a.interval)
+    done = {(r["anchor_ts"], r["engine"]) for r in rounds}
+    start = min((r["anchor_ts"] for r in rounds), default=int(ts[-1]))  # never back-fill before the test began
+    newest = int(ts[-1])
+    todo = [i for i in range(len(ts) - 1, max(ctx - 2, len(ts) - 1 - a.backfill), -1)
+            if ts[i] >= start and ((int(ts[i]), model_key) not in done or (int(ts[i]), "bootstrap") not in done)]
+    if not todo:
+        print(f"anchor {df_all['timestamps'].iloc[-1]} already recorded")
         return
+    kronos = None
     with _rounds_file(a.symbol, a.interval).open("a") as f:
-        for name, make in engines.items():
-            eng = make()
-            t0 = time.time()
-            paths = eng.sample(df, y_ts, a.samples, a.temperature, a.top_p, anchor % 100000)
-            summ = analytics.summarize(paths, df["close"].to_numpy())
-            rec = {"engine": name, "symbol": a.symbol, "interval": a.interval, "anchor_ts": anchor,
-                   "recorded_at": int(time.time()), "source": md.active, "last_close": summ["last_close"],
-                   "horizon": a.horizon, "samples": a.samples, "temperature": a.temperature, "top_p": a.top_p,
-                   "seconds": round(time.time() - t0, 1), "median": summ["median"], "p10": summ["final"]["p10"],
-                   "p90": summ["final"]["p90"], "prob_up": summ["prob_up"], "regime": summ["regime"],
-                   "paths": np.round(paths[..., 3], 2).tolist()}
-            f.write(json.dumps(rec) + "\n")
-            print(f"{name}: anchor {df['timestamps'].iloc[-1]} last {summ['last_close']:.2f} "
-                  f"median {summ['median']:.2f} P(up) {summ['prob_up']:.0%} ({rec['seconds']}s)")
+        for i in sorted(todo):
+            anchor = int(ts[i])
+            df = df_all.iloc[max(0, i - ctx + 1): i + 1].reset_index(drop=True)
+            y_ts = pd.Series(pd.date_range(df["timestamps"].iloc[-1] + pd.Timedelta(seconds=sec),
+                                           periods=a.horizon, freq=f"{sec}s"))
+            for name in (model_key, "bootstrap"):
+                if (anchor, name) in done:
+                    continue
+                if name == "bootstrap":
+                    eng = BootstrapEngine()
+                else:
+                    kronos = kronos or KronosEngine(model_key, a.weights_dir, "", 50)
+                    eng = kronos
+                t0 = time.time()
+                paths = eng.sample(df, y_ts, a.samples, a.temperature, a.top_p, anchor % 100000)
+                summ = analytics.summarize(paths, df["close"].to_numpy())
+                rec = {"engine": name, "symbol": a.symbol, "interval": a.interval, "anchor_ts": anchor,
+                       "recorded_at": int(time.time()), "backfilled": anchor != newest, "source": md.active,
+                       "last_close": summ["last_close"], "horizon": a.horizon, "samples": a.samples,
+                       "temperature": a.temperature, "top_p": a.top_p, "seconds": round(time.time() - t0, 1),
+                       "median": summ["median"], "p10": summ["final"]["p10"], "p90": summ["final"]["p90"],
+                       "prob_up": summ["prob_up"], "regime": summ["regime"],
+                       "paths": np.round(paths[..., 3], 2).tolist()}
+                f.write(json.dumps(rec) + "\n")
+                f.flush()
+                print(f"{name}: anchor {df['timestamps'].iloc[-1]} last {summ['last_close']:.2f} "
+                      f"median {summ['median']:.2f} P(up) {summ['prob_up']:.0%} ({rec['seconds']}s)"
+                      f"{' [backfill]' if rec['backfilled'] else ''}")
 
 
 def grade(rounds: list[dict], df: pd.DataFrame) -> pd.DataFrame:
@@ -138,6 +156,7 @@ def main() -> None:
     ap.add_argument("--samples", type=int, default=30)
     ap.add_argument("--temperature", type=float, default=1.0)
     ap.add_argument("--top-p", type=float, default=0.9)
+    ap.add_argument("--backfill", type=int, default=8, help="max missed hourly anchors to fill per run")
     a = ap.parse_args()
     step(a) if a.cmd == "step" else report(a)
 
