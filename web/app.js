@@ -136,8 +136,19 @@ function renderScore(st) {
     const w = best(key, sgn_);
     return `<tr><td>${l}</td><td class="${w === "k" ? "best" : ""}">${k.rounds ? f(k[key]) : "-"}</td>
       <td class="${w === "b" ? "best" : ""}">${b.rounds ? f(b[key]) : "-"}</td></tr>`;
-  }).join("") + `<tr><td>target</td><td colspan=2 style="text-align:center;color:#3f5466">hit &gt;50% - cover ≈80% - skill &gt;0</td></tr>`;
+  }).join("") + sigRows(k, b) + `<tr><td>target</td><td colspan=2 style="text-align:center;color:#3f5466">hit &gt;50% - cover ≈80% - skill &gt;0</td></tr>`;
   drawPit(k.pit_hist);
+}
+
+// Significance on non-overlapping rounds: the honest sample size
+function sigRows(k, b) {
+  const ci = (m) => (m.n_indep ? `${pct(m.hit_indep, 0)} <span style="color:#5f7385">[${pct(m.ci_low, 0)}-${pct(m.ci_high, 0)}]</span>` : "-");
+  const cls = { "ventaja": "hit", "peor que azar": "miss", "no concluyente": "open", "pocos datos": "open" };
+  const v = (m) => (m.verdict ? `<span class="pill ${cls[m.verdict] || "open"}">${esc(m.verdict)}</span>` : "-");
+  return `<tr><td>indep. rounds</td><td>${k.n_indep ?? 0}</td><td>${b.n_indep ?? 0}</td></tr>
+    <tr><td>hit indep. (95% CI)</td><td>${ci(k)}</td><td>${ci(b)}</td></tr>
+    <tr><td>p-value vs coin</td><td>${k.n_indep ? k.p_value.toFixed(3) : "-"}</td><td>${b.n_indep ? b.p_value.toFixed(3) : "-"}</td></tr>
+    <tr><td>verdict</td><td>${v(k)}</td><td>${v(b)}</td></tr>`;
 }
 
 function renderRounds(st) {

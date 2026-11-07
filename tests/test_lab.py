@@ -126,3 +126,22 @@ def test_forward_grade_only_complete_rounds():
     g = grade([r, late], df)
     assert len(g) == 1 and g.actual.iloc[0] == df.close.iloc[259]
     assert binom_p(0, 10) == 1.0 and binom_p(10, 10) == 1 / 1024
+
+
+def test_significance_uses_non_overlapping_rounds():
+    rows = [{"status": "done", "anchor_ts": i * 3600, "horizon": 24, "score": {"direction_hit": True}}
+            for i in range(240)]
+    s = analytics.significance(rows, 3600)
+    assert s["n_indep"] == 10 and s["hit_indep"] == 1.0
+    assert s["ci_low"] > 0.5 and s["verdict"] == "ventaja"
+    few = analytics.significance(rows[:48], 3600)
+    assert few["n_indep"] == 2 and few["verdict"] == "pocos datos"
+    lo, hi = analytics.wilson(5, 10)
+    assert lo < 0.5 < hi
+
+
+def test_scheduler_settings_auto_symbols(monkeypatch):
+    monkeypatch.setenv("KRONOS_AUTO_SYMBOLS", "BTCUSDT,ETHUSDT")
+    assert Settings().auto_symbols == ["BTCUSDT", "ETHUSDT"]
+    monkeypatch.delenv("KRONOS_AUTO_SYMBOLS")
+    assert Settings().auto_symbols == []

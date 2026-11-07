@@ -123,3 +123,45 @@ def aggregate(scores: list[dict]) -> dict:
         "skill": float(np.mean([s["skill"] for s in done])),
         "pit_hist": (hist / max(1, hist.sum())).tolist(),
     }
+
+
+def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
+    """95% Wilson interval for a proportion k/n."""
+    if n == 0:
+        return 0.0, 1.0
+    p = k / n
+    d = 1 + z * z / n
+    c = (p + z * z / (2 * n)) / d
+    h = z * np.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / d
+    return float(c - h), float(c + h)
+
+
+def binom_p_greater(k: int, n: int) -> float:
+    """One-sided P(X >= k), X ~ Binomial(n, 0.5)."""
+    from math import comb
+    return float(sum(comb(n, i) for i in range(k, n + 1)) / 2**n) if n else 1.0
+
+
+def significance(rows: list[dict], seconds: int) -> dict:
+    """Direction hit-rate on NON-overlapping rounds only (each graded window starts after the
+    previous one ended), with a 95% interval and a verdict. Overlapping hourly rounds with a
+    24-step horizon share most of their future, so counting them all would overstate certainty."""
+    done = sorted((r for r in rows if r.get("status") == "done" and r.get("score")), key=lambda r: r["anchor_ts"])
+    picked, next_ok = [], -1
+    for r in done:
+        if r["anchor_ts"] >= next_ok:
+            picked.append(r)
+            next_ok = r["anchor_ts"] + r["horizon"] * seconds
+    n = len(picked)
+    k = sum(1 for r in picked if r["score"]["direction_hit"])
+    lo, hi = wilson(k, n)
+    if n < 10:
+        verdict = "pocos datos"
+    elif lo > 0.5:
+        verdict = "ventaja"
+    elif hi < 0.5:
+        verdict = "peor que azar"
+    else:
+        verdict = "no concluyente"
+    return {"n_indep": n, "hit_indep": (k / n) if n else None, "ci_low": lo, "ci_high": hi,
+            "p_value": binom_p_greater(k, n), "verdict": verdict}

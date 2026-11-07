@@ -24,8 +24,9 @@ async def scheduler() -> None:
     while True:
         try:
             await asyncio.to_thread(lab.update_scores)
-            if settings.auto_run and not lab.busy and lab.needs_new_round(settings.symbol, settings.interval):
-                await asyncio.to_thread(lab.forecast, settings.symbol, settings.interval)
+            for sym in (settings.auto_symbols or [settings.symbol]) if settings.auto_run else []:
+                if not lab.busy and lab.needs_new_round(sym, settings.interval):
+                    await asyncio.to_thread(lab.forecast, sym, settings.interval)
         except Exception as e:  # noqa: BLE001
             lab.events.emit("scheduler", f"{type(e).__name__}: {e}", "error")
         await asyncio.sleep(settings.poll_seconds)

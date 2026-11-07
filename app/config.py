@@ -37,6 +37,8 @@ class Settings:
     source: str = field(default_factory=lambda: _env("SOURCE", "auto"))  # auto|binance|bybit|okx|synthetic
     symbols: list[str] = field(default_factory=lambda: _env("SYMBOLS", "BTCUSDT,ETHUSDT,SOLUSDT").split(","))
     symbol: str = field(default_factory=lambda: _env("SYMBOL", "BTCUSDT"))
+    # symbols that get an automatic round on every candle close (comma-separated)
+    auto_symbols: list[str] = field(default_factory=lambda: [x for x in _env("AUTO_SYMBOLS", "").split(",") if x])
     interval: str = field(default_factory=lambda: _env("INTERVAL", "1h"))
     lookback: int = field(default_factory=lambda: int(_env("LOOKBACK", "512")))
     horizon: int = field(default_factory=lambda: int(_env("HORIZON", "24")))

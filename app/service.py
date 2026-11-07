@@ -161,9 +161,10 @@ class Lab:
     def metrics(self, symbol: str, interval: str) -> dict:
         out = {}
         for role in ("primary", "shadow"):
-            hist = self.store.history(symbol, interval, role, limit=500)
+            hist = self.store.history(symbol, interval, role, limit=5000)
             out[role] = analytics.aggregate([h["score"] for h in hist if h["status"] == "done"])
             out[role]["open"] = sum(1 for h in hist if h["status"] == "open")
+            out[role].update(analytics.significance(hist, INTERVALS[interval]))
         return out
 
     def needs_new_round(self, symbol: str, interval: str) -> bool:
