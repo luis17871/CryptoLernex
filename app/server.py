@@ -24,9 +24,11 @@ async def scheduler() -> None:
     while True:
         try:
             await asyncio.to_thread(lab.update_scores)
-            for sym in (settings.auto_symbols or [settings.symbol]) if settings.auto_run else []:
-                if not lab.busy and lab.needs_new_round(sym, settings.interval):
-                    await asyncio.to_thread(lab.forecast, sym, settings.interval)
+            for track in settings.tracks if settings.auto_run else []:
+                horizon, every = (int(x) for x in track.split(":"))
+                for sym in settings.auto_symbols or [settings.symbol]:
+                    if not lab.busy and lab.needs_new_round(sym, settings.interval, horizon, every):
+                        await asyncio.to_thread(lab.forecast, sym, settings.interval, horizon)
         except Exception as e:  # noqa: BLE001
             lab.events.emit("scheduler", f"{type(e).__name__}: {e}", "error")
         await asyncio.sleep(settings.poll_seconds)
@@ -56,7 +58,8 @@ def info():
 
 
 @app.get("/api/state")
-def state(symbol: str = Query(None), interval: str = Query(None), candles: int = Query(160, le=1000)):
+def state(symbol: str = Query(None), interval: str = Query(None), candles: int = Query(160, le=1000),
+          horizon: int = Query(None)):
     symbol = (symbol or settings.symbol).upper()
     interval = interval or settings.interval
     if interval not in INTERVALS:
@@ -67,14 +70,15 @@ def state(symbol: str = Query(None), interval: str = Query(None), candles: int =
         raise HTTPException(502, f"market data: {e}") from e
     cdl = [[int(t.timestamp()), o, h, l, c, v] for t, o, h, l, c, v in
            df[["timestamps", "open", "high", "low", "close", "volume"]].itertuples(index=False)]
-    rnd = lab.store.latest(symbol, interval)
-    shadow = lab.store.latest(symbol, interval, "shadow")
+    rnd = lab.store.latest(symbol, interval, horizon=horizon)
+    shadow = lab.store.latest(symbol, interval, "shadow", horizon=horizon)
     if rnd and shadow and shadow["anchor_ts"] != rnd["anchor_ts"]:
         shadow = None
-    rounds = lab.store.history(symbol, interval, limit=40)
+    rounds = lab.store.history(symbol, interval, limit=40, horizon=horizon)
     return {"symbol": symbol, "interval": interval, "seconds": INTERVALS[interval], "candles": cdl,
             "round": rnd, "shadow": {"summary": shadow["summary"], "score": shadow["score"]} if shadow else None,
-            "metrics": lab.metrics(symbol, interval), "rounds": rounds, "info": lab.info()}
+            "metrics": lab.metrics(symbol, interval, horizon), "rounds": rounds, "info": lab.info(),
+            "horizon": horizon}
 
 
 class ForecastReq(BaseModel):
@@ -119,6 +123,7 @@ def export(symbol: str = Query(None), interval: str = Query(None)):
     for r in lab.store.history(symbol, interval, limit=10000):
         s, sc = r["summary"], r["score"] or {}
         rows.append({"id": r["id"], "anchor": pd.to_datetime(r["anchor_ts"], unit="s", utc=True), "engine": r["engine"],
+                     "horizon": r["horizon"],
                      "last_close": r["last_close"], "median": s["median"], "p10": s["final"]["p10"],
                      "p90": s["final"]["p90"], "prob_up": s["prob_up"], "regime": s["regime"], "status": r["status"],
                      "actual": sc.get("actual_last"), "coverage": sc.get("coverage"),

@@ -158,19 +158,21 @@ class Lab:
                                               f" - coverage {sc['coverage']:.0%}")
         return finished
 
-    def metrics(self, symbol: str, interval: str) -> dict:
+    def metrics(self, symbol: str, interval: str, horizon: int | None = None) -> dict:
         out = {}
         for role in ("primary", "shadow"):
-            hist = self.store.history(symbol, interval, role, limit=5000)
+            hist = self.store.history(symbol, interval, role, limit=5000, horizon=horizon)
             out[role] = analytics.aggregate([h["score"] for h in hist if h["status"] == "done"])
             out[role]["open"] = sum(1 for h in hist if h["status"] == "open")
             out[role].update(analytics.significance(hist, INTERVALS[interval]))
         return out
 
-    def needs_new_round(self, symbol: str, interval: str) -> bool:
-        last = self.store.latest(symbol, interval)
-        if not last:
-            return True
+    def needs_new_round(self, symbol: str, interval: str, horizon: int | None = None, every_hours: int = 1) -> bool:
+        """True when a new candle closed on this track's grid (forecasts issued at UTC multiples of
+        ``every_hours``) and no round exists for it yet."""
         sec = INTERVALS[interval]
         newest_closed_open = (int(time.time()) // sec) * sec - sec
-        return newest_closed_open > last["anchor_ts"]
+        if (newest_closed_open + sec) % (every_hours * 3600) != 0 and every_hours * 3600 > sec:
+            return False
+        last = self.store.latest(symbol, interval, horizon=horizon)
+        return not last or newest_closed_open > last["anchor_ts"]

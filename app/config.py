@@ -35,11 +35,14 @@ class Settings:
     weights_dir: str = field(default_factory=lambda: _env("WEIGHTS_DIR", ""))  # optional local snapshot
     device: str = field(default_factory=lambda: _env("DEVICE", ""))
     source: str = field(default_factory=lambda: _env("SOURCE", "auto"))  # auto|binance|bybit|okx|synthetic
-    symbols: list[str] = field(default_factory=lambda: _env("SYMBOLS", "BTCUSDT,ETHUSDT,SOLUSDT").split(","))
+    symbols: list[str] = field(default_factory=lambda: _env("SYMBOLS", "BTCUSDT,SOLUSDT").split(","))
     symbol: str = field(default_factory=lambda: _env("SYMBOL", "BTCUSDT"))
     # symbols that get an automatic round on every candle close (comma-separated)
     auto_symbols: list[str] = field(default_factory=lambda: [x for x in _env("AUTO_SYMBOLS", "").split(",") if x])
     interval: str = field(default_factory=lambda: _env("INTERVAL", "1h"))
+    # automatic test tracks as "horizon:every_N_hours", e.g. "24:1,4:4" = 24-candle forecast every hour
+    # plus a 4-candle forecast every 4 hours (whose windows never overlap)
+    tracks: list[str] = field(default_factory=lambda: [x for x in _env("TRACKS", "24:1").split(",") if x])
     lookback: int = field(default_factory=lambda: int(_env("LOOKBACK", "512")))
     horizon: int = field(default_factory=lambda: int(_env("HORIZON", "24")))
     samples: int = field(default_factory=lambda: int(_env("SAMPLES", "100")))

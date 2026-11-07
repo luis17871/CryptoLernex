@@ -145,3 +145,19 @@ def test_scheduler_settings_auto_symbols(monkeypatch):
     assert Settings().auto_symbols == ["BTCUSDT", "ETHUSDT"]
     monkeypatch.delenv("KRONOS_AUTO_SYMBOLS")
     assert Settings().auto_symbols == []
+
+
+def test_tracks_grid_and_horizon_filter(monkeypatch):
+    s = Settings(source="synthetic", engine="bootstrap", lookback=128, samples=10, db_path=":memory:")
+    lab = Lab(s, engine=BootstrapEngine(), store=Store(":memory:"), market=MarketData("synthetic"))
+    t0 = 1794081600  # 2026-11-07 20:00 UTC, a multiple of 4h
+    monkeypatch.setattr("app.service.time.time", lambda: t0 + 60)
+    assert lab.needs_new_round("BTCUSDT", "1h", 4, 4)       # candle 19:00 closed at 20:00 -> on the 4h grid
+    lab.forecast("BTCUSDT", "1h", horizon=4, seed=1)
+    lab.forecast("BTCUSDT", "1h", horizon=24, seed=1)
+    assert not lab.needs_new_round("BTCUSDT", "1h", 4, 4)
+    monkeypatch.setattr("app.service.time.time", lambda: t0 + 3600 + 60)
+    assert not lab.needs_new_round("BTCUSDT", "1h", 4, 4)   # 21:00 is off the 4h grid
+    assert lab.needs_new_round("BTCUSDT", "1h", 24, 1)
+    assert lab.store.latest("BTCUSDT", "1h", horizon=4)["horizon"] == 4
+    assert len(lab.store.history("BTCUSDT", "1h", horizon=24)) == 1

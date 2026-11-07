@@ -28,6 +28,12 @@ async function boot() {
   $("inH").value = st.horizon; $("inN").value = st.samples; $("inT").value = st.temperature; $("inP").value = st.top_p;
   $("symbol").onchange = (e) => { S.symbol = e.target.value; S.replay = null; refresh(); };
   $("interval").onchange = (e) => { S.interval = e.target.value; S.replay = null; refresh(); };
+  const hz = [...new Set((st.tracks || []).map((t) => +t.split(":")[0]))];
+  S.horizon = hz[0] || null;
+  $("track").innerHTML = hz.map((h) => `<option value="${h}">horizonte ${h}</option>`).join("");
+  $("track").hidden = hz.length < 2;
+  $("track").onchange = (e) => { S.horizon = +e.target.value; $("inH").value = S.horizon; S.replay = null; refresh(); };
+  if (S.horizon) $("inH").value = S.horizon;
   $("runBtn").onclick = run;
   setupEvents();
   setupHover();
@@ -41,7 +47,7 @@ async function refresh() {
   try {
     let n = 160;
     if (S.replay) n = Math.min(1000, Math.ceil((Date.now() / 1000 - S.replay.anchor_ts) / S.replaySec) + 140);
-    const st = await api(`/api/state?symbol=${S.symbol}&interval=${S.interval}&candles=${n}`);
+    const st = await api(`/api/state?symbol=${S.symbol}&interval=${S.interval}&candles=${n}${S.horizon ? `&horizon=${S.horizon}` : ""}`);
     S.state = st;
     $("liveTxt").textContent = "live";
     render();

@@ -2,9 +2,9 @@ name: forward-test
 
 # Live, out-of-sample test: every 6 hours record a Kronos forecast for the newest closed
 # BTCUSDT 1h candle (plus the bootstrap baseline) and re-grade all past rounds.
+# Retired: the live test now runs on the home Linux server (deploy/docker-compose.yml).
+# Kept for manual runs only.
 on:
-  schedule:
-    - cron: "8 1,7,13,19 * * *"
   workflow_dispatch:
 
 permissions:

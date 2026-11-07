@@ -69,14 +69,18 @@ class Store:
     def open_rounds(self) -> list[dict]:
         return self._rows("SELECT * FROM rounds WHERE status='open'", ())
 
-    def latest(self, symbol: str, interval: str, role: str = "primary") -> dict | None:
-        r = self._rows("SELECT * FROM rounds WHERE symbol=? AND interval=? AND role=? ORDER BY id DESC LIMIT 1",
-                       (symbol, interval, role))
+    def latest(self, symbol: str, interval: str, role: str = "primary", horizon: int | None = None) -> dict | None:
+        hz = "" if horizon is None else " AND horizon=?"
+        args = (symbol, interval, role) + (() if horizon is None else (int(horizon),))
+        r = self._rows(f"SELECT * FROM rounds WHERE symbol=? AND interval=? AND role=?{hz} ORDER BY id DESC LIMIT 1",
+                       args)
         return r[0] if r else None
 
     def history(self, symbol: str, interval: str, role: str = "primary", limit: int = 200,
-                with_paths: bool = False) -> list[dict]:
+                with_paths: bool = False, horizon: int | None = None) -> list[dict]:
         cols = "*" if with_paths else ("id,created_at,symbol,interval,engine,role,anchor_ts,last_close,horizon,"
                                        "params,summary,status,score")
-        return self._rows(f"SELECT {cols} FROM rounds WHERE symbol=? AND interval=? AND role=? "
-                          "ORDER BY id DESC LIMIT ?", (symbol, interval, role, limit))
+        hz = "" if horizon is None else " AND horizon=?"
+        args = (symbol, interval, role) + (() if horizon is None else (int(horizon),)) + (limit,)
+        return self._rows(f"SELECT {cols} FROM rounds WHERE symbol=? AND interval=? AND role=?{hz} "
+                          "ORDER BY id DESC LIMIT ?", args)
