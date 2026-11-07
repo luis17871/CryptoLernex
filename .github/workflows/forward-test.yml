@@ -1,10 +1,10 @@
 name: forward-test
 
-# Live, out-of-sample test: every hour record a Kronos forecast for the newest closed
+# Live, out-of-sample test: every 6 hours record a Kronos forecast for the newest closed
 # BTCUSDT 1h candle (plus the bootstrap baseline) and re-grade all past rounds.
 on:
   schedule:
-    - cron: "7 * * * *"
+    - cron: "8 1,7,13,19 * * *"
   workflow_dispatch:
 
 permissions:

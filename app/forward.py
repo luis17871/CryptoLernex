@@ -37,7 +37,7 @@ def load_rounds(symbol: str, interval: str) -> list[dict]:
 
 
 def step(a) -> None:
-    """Record the newest closed candle and back-fill hourly anchors missed since the last run.
+    """Record the newest anchor on the N-hour grid and back-fill anchors missed since the last run.
 
     A back-filled round only sees candles up to its own anchor, so it is still out-of-sample;
     it is flagged ``backfilled`` because it was computed after its anchor time.
@@ -47,14 +47,15 @@ def step(a) -> None:
     model_key = a.model
     ctx = min(a.context, MODELS[model_key]["max_context"])
     sec = INTERVALS[a.interval]
-    df_all = md.candles(a.symbol, a.interval, ctx + a.backfill)
+    df_all = md.candles(a.symbol, a.interval, ctx + a.backfill * a.every)
     ts = (df_all["timestamps"] - pd.Timestamp(0, tz="UTC")).dt.total_seconds().astype(int).to_numpy()
     rounds = load_rounds(a.symbol, a.interval)
     done = {(r["anchor_ts"], r["engine"]) for r in rounds}
     start = min((r["anchor_ts"] for r in rounds), default=int(ts[-1]))  # never back-fill before the test began
-    newest = int(ts[-1])
-    todo = [i for i in range(len(ts) - 1, max(ctx - 2, len(ts) - 1 - a.backfill), -1)
-            if ts[i] >= start and ((int(ts[i]), model_key) not in done or (int(ts[i]), "bootstrap") not in done)]
+    step_s = a.every * 3600
+    grid = [i for i in range(len(ts)) if ts[i] % step_s == 0]  # anchors on the N-hour grid only
+    newest = int(ts[grid[-1]]) if grid else int(ts[-1])
+    todo = [i for i in grid[-a.backfill:] if i >= ctx - 1 and ts[i] >= start and ((int(ts[i]), model_key) not in done or (int(ts[i]), "bootstrap") not in done)]
     if not todo:
         print(f"anchor {df_all['timestamps'].iloc[-1]} already recorded")
         return
@@ -156,7 +157,8 @@ def main() -> None:
     ap.add_argument("--samples", type=int, default=30)
     ap.add_argument("--temperature", type=float, default=1.0)
     ap.add_argument("--top-p", type=float, default=0.9)
-    ap.add_argument("--backfill", type=int, default=8, help="max missed hourly anchors to fill per run")
+    ap.add_argument("--backfill", type=int, default=4, help="max missed anchors to fill per run")
+    ap.add_argument("--every", type=int, default=6, help="one round every N hours (anchors at UTC multiples of N)")
     a = ap.parse_args()
     step(a) if a.cmd == "step" else report(a)
 
