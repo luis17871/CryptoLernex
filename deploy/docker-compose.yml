@@ -15,6 +15,7 @@ services:
       KRONOS_INTERVAL: 1h
       KRONOS_TORCH_THREADS: "2"
       HF_HOME: /cache/huggingface
+      HF_HUB_DISABLE_XET: "1"       # plain HTTPS download; the xet transfer can stall
     volumes:
       - kronos-data:/app/data        # rounds and track record (SQLite)
       - kronos-cache:/cache          # model weights, downloaded once
