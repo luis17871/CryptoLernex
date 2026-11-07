@@ -44,6 +44,12 @@ python scripts/download_weights.py kronos-small ./weights
 KRONOS_WEIGHTS_DIR=./weights/kronos-small uvicorn app.server:app
 ```
 
+En una Mac encendida 24/7 (servicio en segundo plano, se reinicia solo):
+```bash
+git clone -b claude/lucid-rubin-ltu6sf https://github.com/luis17871/CryptoLernex.git ~/CryptoLernex
+bash ~/CryptoLernex/scripts/mac/setup.sh        # abre http://localhost:8000
+```
+
 Docker: `docker build -t kronos-lab . && docker run -p 8000:8000 kronos-lab`
 
 ### Configuración (variables de entorno)
