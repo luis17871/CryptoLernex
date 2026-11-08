@@ -7,3 +7,4 @@ weights/
 *.log
 *.progress.json
 *.progress.json.tmp
+results/cache/
