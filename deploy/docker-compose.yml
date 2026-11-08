@@ -14,9 +14,9 @@ services:
       KRONOS_SAMPLES: "50"           # paths per forecast (100 = like the viral panel, 2x CPU)
       KRONOS_INTERVAL: 1h
       KRONOS_AUTO_SYMBOLS: BTCUSDT,SOLUSDT   # automatic rounds for each
-      KRONOS_TRACKS: "24:1,4:4"
+      KRONOS_TRACKS: "24:1,4:4"      # 24 h forecast every hour + 4 h forecast every 4 h
       KRONOS_PAPER: "1"              # daily paper trading of LightGBM + derivatives (http://<host>:8010/paper)
-      KRONOS_PAPER_SYMBOLS: BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT,ADAUSDT,DOGEUSDT,LINKUSDT,AVAXUSDT,LTCUSDT      # 24 h forecast every hour + 4 h forecast every 4 h (non-overlapping)
+      KRONOS_PAPER_SYMBOLS: BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT,ADAUSDT,DOGEUSDT,LINKUSDT,AVAXUSDT,LTCUSDT
       KRONOS_TORCH_THREADS: "2"
       HF_HOME: /cache/huggingface
       HF_HUB_DISABLE_XET: "1"       # plain HTTPS download; the xet transfer can stall
