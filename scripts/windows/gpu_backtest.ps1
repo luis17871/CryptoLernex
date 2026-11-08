@@ -44,7 +44,7 @@ $VPy = Join-Path $Dir ".venv\Scripts\python.exe"
 & $VPy -m pip install -q -U pip
 Write-Host "Downloading PyTorch CUDA (~2.5 GB). This can take a while on slow connections."
 & $VPy -m pip install torch --index-url https://download.pytorch.org/whl/cu126 --progress-bar on
-& $VPy -m pip install -q numpy pandas einops huggingface_hub safetensors tqdm httpx fastapi uvicorn
+& $VPy -m pip install -q numpy pandas einops huggingface_hub safetensors tqdm httpx fastapi uvicorn chronos-forecasting timesfm
 & $VPy -c "import torch; ok=torch.cuda.is_available(); print('GPU:', torch.cuda.get_device_name(0) if ok else 'NOT AVAILABLE'); raise SystemExit(0 if ok else 3)"
 if ($LASTEXITCODE -ne 0) { throw "PyTorch does not see the GPU. Update the NVIDIA driver (GeForce Experience or nvidia.com) and run again." }
 
@@ -63,8 +63,22 @@ $Tests = @(
     @{n="small_BTC_h4";  s="BTCUSDT"; m="kronos-small"; h=4;  r=2000; k=30},
     @{n="small_SOL_h4";  s="SOLUSDT"; m="kronos-small"; h=4;  r=2000; k=30},
     @{n="base_BTC_h24";  s="BTCUSDT"; m="kronos-base";  h=24; r=330;  k=30},
-    @{n="base_SOL_h24";  s="SOLUSDT"; m="kronos-base";  h=24; r=330;  k=30}
+    @{n="base_SOL_h24";  s="SOLUSDT"; m="kronos-base";  h=24; r=330;  k=30},
+    @{n="chronos_BTC_h24"; s="BTCUSDT"; m="chronos-2";   h=24; r=330;  k=30},
+    @{n="chronos_BTC_h4";  s="BTCUSDT"; m="chronos-2";   h=4;  r=2000; k=30},
+    @{n="chronos_SOL_h24"; s="SOLUSDT"; m="chronos-2";   h=24; r=330;  k=30},
+    @{n="chronos_SOL_h4";  s="SOLUSDT"; m="chronos-2";   h=4;  r=2000; k=30},
+    @{n="timesfm_BTC_h24"; s="BTCUSDT"; m="timesfm-2.5"; h=24; r=330;  k=30},
+    @{n="timesfm_BTC_h4";  s="BTCUSDT"; m="timesfm-2.5"; h=4;  r=2000; k=30},
+    @{n="timesfm_SOL_h24"; s="SOLUSDT"; m="timesfm-2.5"; h=24; r=330;  k=30},
+    @{n="timesfm_SOL_h4";  s="SOLUSDT"; m="timesfm-2.5"; h=4;  r=2000; k=30}
 )
+# results already computed in the cloud (same window): reuse them instead of recomputing
+$RepoRes = Join-Path $Src.FullName "results\backtest\long"
+if (Test-Path $RepoRes) {
+    Get-ChildItem $RepoRes -File -Include *.json, *.csv -Recurse | Where-Object { $_.Name -ne "plan.json" } |
+        ForEach-Object { $dst = Join-Path $Out $_.Name; if (-not (Test-Path $dst)) { Copy-Item $_.FullName $dst } }
+}
 # plan for the monitor page, then start the monitor (http://localhost:8020) and open it
 $Tests | ForEach-Object { @{name=$_.n; symbol=$_.s; model=$_.m; horizon=$_.h} } | ConvertTo-Json | Set-Content "$Out\plan.json" -Encoding UTF8
 $env:KRONOS_BACKTEST_DIR = Join-Path $Dir $Out
@@ -80,7 +94,8 @@ foreach ($t in $Tests) {
     $json = "$Out\$($t.n).json"
     if (Test-Path $json) { Write-Host "skip $($t.n) (done)"; continue }
     Write-Host "-- $($t.n)" -ForegroundColor Yellow
-    & $VPy -m app.backtest --symbol $t.s --interval 1h --model $t.m --weights-dir "weights\$($t.m)" `
+    $wd = if ($t.m -like "kronos-*") { "weights\$($t.m)" } else { "" }
+    & $VPy -m app.backtest --symbol $t.s --interval 1h --model $t.m --weights-dir $wd `
         --horizon $t.h --step $t.h --rounds $t.r --samples $t.k --device cuda:0 --end 2026-11-08T00:00Z `
         --json $json --csv "$Out\$($t.n).csv"
     if ($LASTEXITCODE -ne 0) {
