@@ -22,6 +22,8 @@
   .tbl { overflow-x: auto; } .tbl table { min-width: 640px; }
   .up { color: var(--teal); } .dn { color: var(--red); } .muted { color: var(--mute); }
   .err { color: var(--red); font-size: 11px; }
+  button.mode { background: var(--panel2); color: var(--mute); border-color: var(--line2); }
+  button.mode.sel { background: linear-gradient(180deg,#123a3a,#0c2526); color: var(--teal); border-color: #1f6f68; }
 </style>
 </head>
 <body>
@@ -33,6 +35,18 @@
   <a class="small" href="/">panel en vivo</a>
 </header>
 <div class="pp">
+  <div class="card" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <button class="mode" data-m="sim" id="mSim">SIMULACIÓN HISTÓRICA</button>
+    <button class="mode" data-m="live" id="mLive">EN VIVO</button>
+    <span class="small" id="status">-</span>
+    <div class="spacer" style="flex:1"></div>
+    <label class="small">días <input id="days" type="number" value="365" min="30" max="1500" style="width:80px"></label>
+    <button id="runBtn">CORRER</button>
+  </div>
+  <section class="card" id="portCard"><div class="lbl">CARTERA <span class="r" id="portInfo">todas las monedas con el mismo peso</span></div>
+    <div class="k3"><div><div class="lbl">ESTRATEGIA</div><b id="pS">-</b></div><div><div class="lbl">SOLO TENDENCIA</div><b id="pT">-</b></div><div><div class="lbl">BUY &amp; HOLD</div><b id="pB">-</b></div></div>
+    <canvas class="eq" id="portEq" style="height:260px"></canvas>
+    <div class="small muted" id="portStats"></div></section>
   <p class="small">Dinero simulado. Cada día después del cierre (00:10 UTC) LightGBM se reentrena con funding, prima de futuros y flujo comprador; solo opera con señal fuerte (P ≥ 65 % o ≤ 35 %) a favor de la tendencia (media de 50 días), 5 días por operación, stop de 1,5 σ, comisiones 0,14 %. Controles: solo tendencia y buy &amp; hold.</p>
   <section class="syms" id="syms"><div class="card muted">Esperando el primer cálculo diario (se ejecuta al arrancar y luego cada día a las 00:10 UTC).</div></section>
   <section class="card"><div class="lbl">OPERACIONES CERRADAS</div><div class="tbl"><table id="trades"></table></div></section>
@@ -45,12 +59,50 @@ const spct = (v) => (v == null ? "-" : (v > 0 ? "+" : "") + (v * 100).toFixed(2)
 const fmt = (v) => (v == null ? "-" : v.toLocaleString("en-US", { maximumFractionDigits: v >= 100 ? 0 : 3 }));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
+let MODE = "sim"; try { MODE = localStorage.getItem("paper.mode") || "sim"; } catch (e) {}
+document.querySelectorAll("button.mode").forEach((b) => (b.onclick = () => { MODE = b.dataset.m; try { localStorage.setItem("paper.mode", MODE); } catch (e) {} tick(); }));
+$("runBtn").onclick = async () => {
+  const r = await fetch(`/api/paper/run?mode=${MODE}&days=${+$("days").value || 365}`, { method: "POST" });
+  $("status").textContent = r.ok ? (MODE === "sim" ? "simulación iniciada…" : "cálculo de hoy iniciado…") : "ya hay un cálculo en curso";
+  setTimeout(tick, 2000);
+};
 async function tick() {
-  try { const r = await fetch("/api/paper"); render(await r.json()); $("liveTxt").textContent = "live"; }
+  try { const r = await fetch(`/api/paper?mode=${MODE}`); render(await r.json()); $("liveTxt").textContent = "live"; }
   catch (e) { $("liveTxt").textContent = "sin conexión"; }
 }
+function portfolio(S) {
+  // equal-weight portfolio: average of each coin's equity, by day (days missing for a coin keep its last value)
+  const days = [...new Set(Object.values(S).flatMap((s) => (s.history || []).map((h) => h.day)))].sort();
+  const last = {}; const out = [];
+  days.forEach((d) => { Object.entries(S).forEach(([n, s]) => { const h = (s.history || []).find((x) => x.day === d); if (h) last[n] = h; });
+    const v = Object.values(last); if (!v.length) return;
+    const avg = (k) => v.reduce((a, h) => a + h[k], 0) / v.length;
+    out.push({ day: d, equity: avg("equity"), trend_equity: avg("trend_equity"), bh_equity: avg("bh_equity") }); });
+  return out;
+}
+function stats(h, k) {
+  if (h.length < 2) return "";
+  const r = h.slice(1).map((x, i) => x[k] / h[i][k] - 1); const m = r.reduce((a, b) => a + b, 0) / r.length;
+  const sd = Math.sqrt(r.reduce((a, b) => a + (b - m) ** 2, 0) / r.length); let peak = 0, dd = 0;
+  h.forEach((x) => { peak = Math.max(peak, x[k]); dd = Math.min(dd, x[k] / peak - 1); });
+  return `Sharpe ${sd ? ((m / sd) * Math.sqrt(365)).toFixed(2) : "-"} · caída máx. ${(dd * 100).toFixed(0)}%`;
+}
 function render(st) {
+  $("mSim").classList.toggle("sel", MODE === "sim"); $("mLive").classList.toggle("sel", MODE === "live");
+  $("runBtn").textContent = MODE === "sim" ? "CORRER SIMULACIÓN" : "CALCULAR HOY";
+  $("days").parentElement.style.display = MODE === "sim" ? "" : "none";
+  $("status").textContent = st.running ? `simulando… ${st.done || 0} de ${st.total || "?"} monedas` : st.busy ? "calculando…" :
+    MODE === "sim" ? (st.days ? `simulación de los últimos ${st.days} días con las mismas reglas que en vivo (reentrenando cada 30 días, sin ver el futuro)` : "sin simulación todavía: pulsa CORRER SIMULACIÓN")
+    : "en vivo: un cálculo por día a las 00:10 UTC";
   const S = st.symbols || {}; const names = Object.keys(S);
+  const P = portfolio(S);
+  if (P.length) { const L = P[P.length - 1];
+    $("pS").textContent = spct(L.equity - 1); $("pS").className = L.equity >= 1 ? "up" : "dn";
+    $("pT").textContent = spct(L.trend_equity - 1); $("pB").textContent = spct(L.bh_equity - 1);
+    $("portStats").textContent = `estrategia: ${stats(P, "equity")} · solo tendencia: ${stats(P, "trend_equity")} · buy & hold: ${stats(P, "bh_equity")}`;
+    $("portInfo").textContent = `${names.length} monedas con el mismo peso · ${P[0].day} → ${L.day}`;
+  }
+  chart($("portEq"), P);
   $("upd").textContent = st.updated ? "actualizado " + new Date(st.updated * 1000).toISOString().slice(0, 16).replace("T", " ") + " UTC" : "sin datos";
   if (!names.length) return;
   $("syms").innerHTML = names.map((n) => { const s = S[n]; const pos = s.position;
@@ -65,14 +117,16 @@ function render(st) {
       <canvas class="eq"></canvas>
       <div class="small muted">variables con más peso hoy: ${esc((s.top_features || []).join(", "))}</div></div>`; }).join("");
   names.forEach((n) => chart(document.querySelector(`[data-s="${CSS.escape(n)}"] canvas`), S[n].history || []));
-  const T = names.flatMap((n) => S[n].trades || []).sort((a, b) => (a.close < b.close ? 1 : -1));
+  const ALL = names.flatMap((n) => S[n].trades || []).sort((a, b) => (a.close < b.close ? 1 : -1));
+  const T = ALL.slice(0, 60); const wins = ALL.filter((t) => t.ret > 0).length;
+  document.querySelector("#trades").previousElementSibling.textContent = ALL.length ? `OPERACIONES CERRADAS · ${ALL.length} en total · ${Math.round((wins / ALL.length) * 100)} % ganadoras · últimas 60` : "OPERACIONES CERRADAS";
   $("trades").innerHTML = "<tr><th>moneda</th><th>lado</th><th>apertura</th><th>cierre</th><th>entrada</th><th>salida</th><th>P(sube)</th><th>motivo</th><th>resultado</th></tr>" +
     (T.length ? T.map((t) => `<tr><td>${esc(t.symbol.replace("USDT", ""))}</td><td>${t.side > 0 ? "largo" : "corto"}</td><td>${esc(t.open)}</td><td>${esc(t.close)}</td>
       <td>${fmt(t.entry)}</td><td>${fmt(t.exit)}</td><td>${pct(t.p_up, 0)}</td><td>${esc(t.reason)}</td><td class="${t.ret > 0 ? "up" : "dn"}">${spct(t.ret)}</td></tr>`).join("")
       : `<tr><td colspan=9 class="muted">Todavía no hay operaciones cerradas.</td></tr>`);
 }
 function chart(cv, h) {
-  if (!cv) return; const dpr = devicePixelRatio || 1, W = cv.clientWidth, H = 220; cv.width = W * dpr; cv.height = H * dpr;
+  if (!cv) return; const dpr = devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight || 220; cv.width = W * dpr; cv.height = H * dpr;
   const g = cv.getContext("2d"); g.scale(dpr, dpr); g.font = "10px JetBrains Mono, monospace";
   if (h.length < 2) { g.fillStyle = "#5f7385"; g.fillText("la curva aparece desde el segundo día", 10, H / 2); return; }
   const keys = [["equity", "#2ee6c8", "estrategia", 2.4], ["trend_equity", "#ff8a5c", "tendencia", 1.6], ["bh_equity", "#eef5fb", "buy & hold", 1.4]];
@@ -83,7 +137,7 @@ function chart(cv, h) {
   keys.forEach(([k, c, name, w]) => { g.strokeStyle = c; g.lineWidth = w; g.beginPath(); h.forEach((r, i) => (i ? g.lineTo(x(i), y(r[k])) : g.moveTo(x(i), y(r[k])))); g.stroke();
     const L = h[h.length - 1][k]; g.fillStyle = c; g.fillText(`${((L - 1) * 100).toFixed(1)}% ${name}`, W - pad.r + 4, y(L) + 3); });
 }
-tick(); setInterval(tick, 60000); window.addEventListener("resize", tick);
+tick(); setInterval(tick, 8000); window.addEventListener("resize", tick);
 </script>
 </body>
 </html>

@@ -26,13 +26,19 @@ PAPER_ON = os.environ.get("KRONOS_PAPER", "0") == "1"
 async def paper_loop() -> None:
     """Paper trading: one step per day, shortly after the daily candle closes (00:10 UTC)."""
     from . import paper
+    if not paper.SIM.exists():  # first start: replay the last year so the page has results right away
+        try:
+            await asyncio.to_thread(_paper_job, paper.simulate, 365)
+            lab.events.emit("paper", "historical simulation done")
+        except Exception as e:  # noqa: BLE001
+            lab.events.emit("paper", f"simulation failed: {e}", "error")
     while True:
         try:
             st = paper.state()
             today = pd.Timestamp.now("UTC").floor("D") - pd.Timedelta(days=1)
             done = all(v.get("last_day") == str(today)[:10] for v in st.get("symbols", {}).values()) and st.get("symbols")
             if not done and pd.Timestamp.now("UTC").hour * 60 + pd.Timestamp.now("UTC").minute >= 10:
-                await asyncio.to_thread(paper.step)
+                await asyncio.to_thread(_paper_job, paper.step)
                 lab.events.emit("paper", "paper trading step done")
         except Exception as e:  # noqa: BLE001
             lab.events.emit("paper", f"{type(e).__name__}: {e}", "error")
@@ -195,6 +201,31 @@ def paper_page():
 
 
 @app.get("/api/paper")
-def paper_api():
+def paper_api(mode: str = Query("live")):
     from . import paper
-    return paper.state()
+    st = paper.sim_state() if mode == "sim" else paper.state()
+    st["busy"] = PAPER_BUSY["on"]
+    return st
+
+
+PAPER_BUSY = {"on": False}
+
+
+def _paper_job(fn, *args):
+    from . import paper  # noqa: F401
+    PAPER_BUSY["on"] = True
+    try:
+        fn(*args)
+    finally:
+        PAPER_BUSY["on"] = False
+
+
+@app.post("/api/paper/run")
+async def paper_run(mode: str = Query("live"), days: int = Query(365, ge=30, le=1500)):
+    """Start a live step now, or a historical simulation, in the background."""
+    from . import paper
+    if PAPER_BUSY["on"]:
+        raise HTTPException(409, "ya hay un cálculo en curso")
+    job = (paper.simulate, days) if mode == "sim" else (paper.step,)
+    asyncio.get_running_loop().run_in_executor(None, _paper_job, *job)
+    return {"started": mode}
