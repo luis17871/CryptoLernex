@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import time
 
 import numpy as np
@@ -22,7 +23,7 @@ from .engine import BootstrapEngine, KronosEngine
 
 def run(df: pd.DataFrame, engines: dict, horizon: int, rounds: int, step: int, context: int, samples: int,
         temperature: float, top_p: float, seed: int = 0, progress: bool = True,
-        records: list | None = None) -> dict:
+        records: list | None = None, progress_file: str | None = None, meta: dict | None = None) -> dict:
     sec = int((df["timestamps"].iloc[1] - df["timestamps"].iloc[0]).total_seconds())
     last_anchor = len(df) - horizon - 1
     anchors = [last_anchor - i * step for i in range(rounds)][::-1]
@@ -30,6 +31,9 @@ def run(df: pd.DataFrame, engines: dict, horizon: int, rounds: int, step: int, c
     if not anchors:
         raise SystemExit("not enough history for that context/horizon; fetch more candles")
     res = {name: [] for name in engines}
+    t_start = time.time()
+    compact: list = []  # per round and engine: [round, engine, hit, coverage, crps_skill] for the monitor
+    every = max(1, len(anchors) // 200)
     for j, a in enumerate(anchors):
         hist = df.iloc[a - context + 1: a + 1].reset_index(drop=True)
         fut = df["close"].iloc[a + 1: a + 1 + horizon].to_numpy()
@@ -42,6 +46,7 @@ def run(df: pd.DataFrame, engines: dict, horizon: int, rounds: int, step: int, c
             sc = analytics.score(paths[..., 3], last, fut)
             sc["seconds"] = time.time() - t0
             res[name].append(sc)
+            compact.append([j, name, int(sc["direction_hit"]), round(sc["coverage"], 4), round(sc["crps_skill"], 4)])
             if records is not None:
                 summ = analytics.summarize(paths, hist["close"].to_numpy())
                 records.append({"engine": name, "anchor": str(hist["timestamps"].iloc[-1]), "last_close": last,
@@ -49,12 +54,28 @@ def run(df: pd.DataFrame, engines: dict, horizon: int, rounds: int, step: int, c
                                 "prob_up": summ["prob_up"], "regime": summ["regime"], "actual": float(fut[-1]),
                                 **{k: sc[k] for k in ("coverage", "inside_final", "direction_hit", "crps_skill",
                                                       "skill", "seconds")}})
+        if progress_file and ((j + 1) % every == 0 or j + 1 == len(anchors)):
+            _write_progress(progress_file, meta or {}, j + 1, len(anchors), t_start,
+                            str(hist["timestamps"].iloc[-1]), compact)
         if progress and ((j + 1) % max(1, len(anchors) // 40) == 0 or j + 1 == len(anchors)):
             line = " | ".join(f"{n}: dir {'HIT ' if r[-1]['direction_hit'] else 'miss'} cov {r[-1]['coverage']:.0%}"
                               for n, r in res.items())
             print(f"[{j + 1:>3}/{len(anchors)}] {hist['timestamps'].iloc[-1]:%Y-%m-%d %H:%M}  {line}", flush=True)
     return {n: analytics.aggregate(r) | {"avg_seconds": float(np.mean([x["seconds"] for x in r]))}
             for n, r in res.items()}
+
+
+def _write_progress(path: str, meta: dict, done: int, total: int, t_start: float, last_anchor: str,
+                    compact: list) -> None:
+    """Small JSON the monitor page polls while a test runs (written atomically)."""
+    el = time.time() - t_start
+    doc = {"status": "running" if done < total else "finishing", "done": done, "total": total,
+           "elapsed_s": round(el, 1), "eta_s": round(el / done * (total - done), 1) if done else None,
+           "updated": time.time(), "last_anchor": last_anchor, "meta": meta, "rounds": compact}
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(doc, f)
+    os.replace(tmp, path)
 
 
 def main() -> None:
@@ -75,6 +96,7 @@ def main() -> None:
     ap.add_argument("--device", default=settings.device, help="cuda:0, cpu, mps (default: auto)")
     ap.add_argument("--json", help="write aggregate results to this file")
     ap.add_argument("--csv", help="write one row per engine and round to this file")
+    ap.add_argument("--progress", help="live progress JSON for the monitor (default: <json>.progress.json)")
     a = ap.parse_args()
 
     engines: dict = {}
@@ -88,7 +110,11 @@ def main() -> None:
     df = MarketData(a.source).candles(a.symbol, a.interval, need)
     print(f"{len(df)} candles {a.symbol} {a.interval}: {df.timestamps.iloc[0]} -> {df.timestamps.iloc[-1]}")
     recs: list = []
-    out = run(df, engines, a.horizon, a.rounds, a.step, a.context, a.samples, a.temperature, a.top_p, records=recs)
+    prog = a.progress or (a.json[:-5] + ".progress.json" if a.json and a.json.endswith(".json") else None)
+    meta = {"symbol": a.symbol, "interval": a.interval, "model": a.model, "horizon": a.horizon, "step": a.step,
+            "samples": a.samples, "first": str(df.timestamps.iloc[0]), "last": str(df.timestamps.iloc[-1])}
+    out = run(df, engines, a.horizon, a.rounds, a.step, a.context, a.samples, a.temperature, a.top_p, records=recs,
+              progress_file=prog, meta=meta)
     if a.csv:
         pd.DataFrame(recs).to_csv(a.csv, index=False)
     print("\nengine          rounds  hit-rate  cover(p10-p90)  CRPS-skill  MAE-skill  s/round")
@@ -112,6 +138,12 @@ def main() -> None:
     if a.json:
         with open(a.json, "w") as f:
             json.dump(out, f, indent=2)
+    if prog and os.path.exists(prog):  # keep the per-round curve for the monitor, mark it done
+        with open(prog) as f:
+            doc = json.load(f)
+        doc["status"] = "done"
+        with open(prog, "w") as f:
+            json.dump(doc, f)
 
 
 if __name__ == "__main__":

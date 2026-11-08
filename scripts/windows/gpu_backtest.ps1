@@ -43,7 +43,7 @@ if (-not (Test-Path ".venv")) { & $Py -m venv .venv }
 $VPy = Join-Path $Dir ".venv\Scripts\python.exe"
 & $VPy -m pip install -q -U pip
 & $VPy -m pip install -q torch --index-url https://download.pytorch.org/whl/cu126
-& $VPy -m pip install -q numpy pandas einops huggingface_hub safetensors tqdm httpx
+& $VPy -m pip install -q numpy pandas einops huggingface_hub safetensors tqdm httpx fastapi uvicorn
 & $VPy -c "import torch; ok=torch.cuda.is_available(); print('GPU:', torch.cuda.get_device_name(0) if ok else 'NOT AVAILABLE'); raise SystemExit(0 if ok else 3)"
 if ($LASTEXITCODE -ne 0) { throw "PyTorch does not see the GPU. Update the NVIDIA driver (GeForce Experience or nvidia.com) and run again." }
 
@@ -64,6 +64,17 @@ $Tests = @(
     @{n="base_BTC_h24";  s="BTCUSDT"; m="kronos-base";  h=24; r=330;  k=30},
     @{n="base_SOL_h24";  s="SOLUSDT"; m="kronos-base";  h=24; r=330;  k=30}
 )
+# plan for the monitor page, then start the monitor (http://localhost:8020) and open it
+$Tests | ForEach-Object { @{name=$_.n; symbol=$_.s; model=$_.m; horizon=$_.h} } | ConvertTo-Json | Set-Content "$Out\plan.json" -Encoding UTF8
+$env:KRONOS_BACKTEST_DIR = Join-Path $Dir $Out
+$busy = Get-NetTCPConnection -LocalPort 8020 -State Listen -ErrorAction SilentlyContinue
+if (-not $busy) {
+    Start-Process $VPy -ArgumentList "-m", "uvicorn", "app.monitor:app", "--host", "0.0.0.0", "--port", "8020" -WorkingDirectory $Dir -WindowStyle Hidden
+    Start-Sleep 3
+}
+Start-Process "http://localhost:8020"
+Write-Host "Monitor: http://localhost:8020 (also from other devices: http://<this-PC-IP>:8020)"
+
 foreach ($t in $Tests) {
     $json = "$Out\$($t.n).json"
     if (Test-Path $json) { Write-Host "skip $($t.n) (done)"; continue }
@@ -71,7 +82,10 @@ foreach ($t in $Tests) {
     & $VPy -m app.backtest --symbol $t.s --interval 1h --model $t.m --weights-dir "weights\$($t.m)" `
         --horizon $t.h --step $t.h --rounds $t.r --samples $t.k --device cuda:0 `
         --json $json --csv "$Out\$($t.n).csv"
-    if ($LASTEXITCODE -ne 0) { Write-Host "test $($t.n) failed, continuing" -ForegroundColor Red }
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "test $($t.n) failed, continuing" -ForegroundColor Red
+        Set-Content "$Out\$($t.n).failed" "exit code $LASTEXITCODE"
+    } else { Remove-Item "$Out\$($t.n).failed" -ErrorAction SilentlyContinue }
 }
 
 Write-Host "`n== RESULTS (copy everything below and paste it in the chat) ==" -ForegroundColor Green

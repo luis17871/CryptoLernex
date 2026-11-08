@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kronos Backtests</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  .bt-wrap { max-width: 1400px; margin: 0 auto; padding: 14px 16px; display: grid; gap: 14px; }
+  .bt-sum { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+  .bt-sum .card b { display: block; font-size: 24px; color: var(--white); margin-top: 4px; }
+  .bt-bar { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; }
+  .bt-bar i { display: block; height: 100%; background: var(--teal); box-shadow: 0 0 10px var(--teal); transition: width .6s; }
+  .bt-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); }
+  .bt-card { display: grid; gap: 8px; align-content: start; }
+  .bt-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .bt-head h3 { margin: 0; font-size: 14px; color: var(--white); letter-spacing: .04em; }
+  .bt-sub { color: var(--mute); font-size: 11px; }
+  .st { padding: 2px 8px; border-radius: 4px; font-size: 10px; letter-spacing: .08em; font-weight: 700; }
+  .st.running { background: #0f2f33; color: var(--teal); }
+  .st.done { background: #0f3a2c; color: var(--green); }
+  .st.queued { background: #1a2632; color: var(--mute); }
+  .st.stopped, .st.failed { background: #3a1220; color: var(--red); }
+  .bt-card table td, .bt-card table th { font-size: 11px; }
+  .vd { padding: 1px 6px; border-radius: 3px; font-size: 10px; }
+  .vd.ventaja { background: #0f3a2c; color: var(--green); }
+  .vd.peor { background: #3a1220; color: var(--red); }
+  .vd.nc { background: #1a2632; color: var(--gold); }
+  canvas.bt-chart { width: 100%; height: 150px; display: block; }
+  .bt-empty { color: var(--mute); text-align: center; padding: 40px 0; }
+  .up { color: var(--teal); } .dn { color: var(--red); }
+  .muted { color: var(--mute); }
+  .bt-wrap > section, .bt-card { min-width: 0; }
+  .bt-wrap .tblwrap { overflow-x: auto; max-height: none; }
+  .bt-wrap table { min-width: 640px; }
+  .bt-card table { min-width: 0; }
+  #dir { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; max-width: 50vw; }
+  @media (max-width: 640px) { #dir { display: none; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="dots"><i></i><i></i><i></i></span><b>KRONOS</b>&nbsp;BACKTESTS</div>
+  <span class="chip live"><i class="pulse"></i><span id="liveTxt">live</span></span>
+  <div class="spacer"></div>
+  <span class="small" id="dir"></span>
+</header>
+<div class="bt-wrap">
+  <section class="bt-sum">
+    <div class="card"><div class="lbl">AVANCE TOTAL</div><b id="sTests">-</b><div class="bt-bar"><i id="sBar" style="width:0"></i></div></div>
+    <div class="card"><div class="lbl">RONDAS EVALUADAS</div><b id="sRounds">-</b></div>
+    <div class="card"><div class="lbl">TIEMPO RESTANTE (prueba actual)</div><b id="sEta">-</b></div>
+    <div class="card"><div class="lbl">KRONOS CON VENTAJA</div><b id="sEdge">-</b></div>
+  </section>
+
+  <section class="card">
+    <div class="lbl">RESUMEN <span class="r">acierto de dirección en rondas que no se solapan, IC 95 %</span></div>
+    <div class="tblwrap"><table id="sumTbl"></table></div>
+  </section>
+
+  <section class="bt-grid" id="cards"></section>
+  <p class="disclaimer">Cada ronda solo ve velas anteriores a su momento. "Ventaja" exige que todo el intervalo de confianza quede por encima de 50 %. No es asesoría financiera.</p>
+</div>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const pct = (v, d = 1) => (v == null || isNaN(v) ? "-" : (v * 100).toFixed(d) + "%");
+const spct = (v) => (v == null ? "-" : (v > 0 ? "+" : "") + (v * 100).toFixed(1) + "%");
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const dur = (s) => { if (s == null) return "-"; s = Math.round(s); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60); return h ? `${h} h ${m} min` : m ? `${m} min` : `${s} s`; };
+const ST = { running: "CORRIENDO", done: "LISTO", queued: "EN COLA", stopped: "DETENIDO", failed: "FALLÓ" };
+const vClass = (v) => (v === "ventaja" ? "ventaja" : v === "peor que azar" ? "peor" : "nc");
+const engName = (e) => (e === "bootstrap" ? "modelo base" : e);
+const title = (t) => {
+  const m = t.meta || {}, p = t.plan || {};
+  const sym = (m.symbol || p.symbol || "").replace("USDT", ""), mod = (m.model || p.model || "").replace("kronos-", "Kronos-");
+  const h = m.horizon || p.horizon;
+  return sym ? `${sym} · ${mod} · horizonte ${h} h` : t.name;
+};
+
+async function tick() {
+  try {
+    const r = await fetch("/api/backtests"); const d = await r.json();
+    $("liveTxt").textContent = "live"; render(d);
+  } catch (e) { $("liveTxt").textContent = "sin conexión"; }
+}
+
+function render(d) {
+  $("dir").textContent = d.dir;
+  const T = d.tests;
+  if (!T.length) { $("cards").innerHTML = '<div class="bt-empty card">Todavía no hay pruebas. Se mostrarán aquí en cuanto empiece la primera.</div>'; return; }
+  const done = T.filter((t) => t.status === "done").length;
+  $("sTests").textContent = `${done} de ${T.length} pruebas`;
+  $("sBar").style.width = (100 * (done + T.filter((t) => t.status === "running").reduce((s, t) => s + (t.total ? t.done / t.total : 0), 0)) / T.length) + "%";
+  $("sRounds").textContent = T.reduce((s, t) => s + (t.done || 0), 0).toLocaleString("es");
+  const run = T.find((t) => t.status === "running");
+  $("sEta").textContent = run ? dur(run.eta_s) : done === T.length ? "terminado" : "-";
+  const graded = T.filter((t) => t.engines && Object.keys(t.engines).some((e) => e !== "bootstrap" && t.engines[e].n));
+  const edge = graded.filter((t) => Object.entries(t.engines).some(([e, m]) => e !== "bootstrap" && m.verdict === "ventaja")).length;
+  $("sEdge").textContent = graded.length ? `${edge} de ${graded.length}` : "-";
+
+  // summary table
+  let rows = "<tr><th>prueba</th><th>motor</th><th>estado</th><th>rondas</th><th>acierto</th><th>IC 95 %</th><th>p</th><th>cobertura</th><th>CRPS skill</th><th>veredicto</th></tr>";
+  T.forEach((t) => {
+    const es = Object.keys(t.engines || {});
+    (es.length ? es : [null]).forEach((e, i) => {
+      const m = e ? t.engines[e] : {};
+      rows += `<tr><td>${i ? "" : esc(title(t))}</td><td>${e ? esc(engName(e)) : "-"}</td>
+        <td>${i ? "" : `<span class="st ${t.status}">${ST[t.status] || t.status}</span>`}</td>
+        <td>${m.n ?? "-"}</td><td class="${m.hit_rate > 0.5 ? "up" : m.hit_rate < 0.5 ? "dn" : ""}">${pct(m.hit_rate)}</td>
+        <td class="muted">${m.n ? `${pct(m.ci_low, 0)}–${pct(m.ci_high, 0)}` : "-"}</td>
+        <td>${m.p_value != null && m.n ? m.p_value.toFixed(3) : "-"}</td><td>${pct(m.coverage, 0)}</td>
+        <td class="${m.crps_skill > 0 ? "up" : m.crps_skill < 0 ? "dn" : ""}">${spct(m.crps_skill)}</td>
+        <td>${m.verdict ? `<span class="vd ${vClass(m.verdict)}">${esc(m.verdict)}</span>` : "-"}</td></tr>`;
+    });
+  });
+  $("sumTbl").innerHTML = rows;
+
+  // cards
+  const box = $("cards");
+  T.forEach((t) => {
+    let c = box.querySelector(`[data-name="${CSS.escape(t.name)}"]`);
+    if (!c) { c = document.createElement("div"); c.className = "card bt-card"; c.dataset.name = t.name; box.appendChild(c); }
+    const pctDone = t.total ? t.done / t.total : 0;
+    const es = Object.keys(t.engines || {});
+    c.innerHTML = `<div class="bt-head"><h3>${esc(title(t))}</h3><span class="st ${t.status}">${ST[t.status] || t.status}</span></div>
+      <div class="bt-sub">${t.total ? `${t.done} de ${t.total} rondas` : "esperando turno"}${t.status === "running" ? ` · faltan ${dur(t.eta_s)}` : ""}${t.last_anchor ? ` · última ronda ${esc(String(t.last_anchor).slice(0, 16))}` : ""}</div>
+      <div class="bt-bar"><i style="width:${pctDone * 100}%"></i></div>
+      ${es.length ? `<table><tr><th></th>${es.map((e) => `<th>${esc(engName(e))}</th>`).join("")}</tr>
+        <tr><td>acierto</td>${es.map((e) => `<td>${pct(t.engines[e].hit_rate)}</td>`).join("")}</tr>
+        <tr><td>IC 95 %</td>${es.map((e) => `<td class="muted">${t.engines[e].n ? `${pct(t.engines[e].ci_low, 0)}–${pct(t.engines[e].ci_high, 0)}` : "-"}</td>`).join("")}</tr>
+        <tr><td>cobertura p10–p90</td>${es.map((e) => `<td>${pct(t.engines[e].coverage, 0)}</td>`).join("")}</tr>
+        <tr><td>veredicto</td>${es.map((e) => `<td>${t.engines[e].verdict ? `<span class="vd ${vClass(t.engines[e].verdict)}">${esc(t.engines[e].verdict)}</span>` : "-"}</td>`).join("")}</tr></table>
+        <canvas class="bt-chart"></canvas>` : ""}`;
+  });
+  LAST = T;
+  drawCharts();
+  box.querySelectorAll(".bt-card").forEach((c) => { if (!T.some((t) => t.name === c.dataset.name)) c.remove(); });
+}
+
+let LAST = [];
+function drawCharts() {  // after layout settles, so each canvas has its final width
+  requestAnimationFrame(() => LAST.forEach((t) => {
+    const cv = document.querySelector(`[data-name="${CSS.escape(t.name)}"] canvas`);
+    if (cv) chart(cv, t);
+  }));
+}
+window.addEventListener("resize", drawCharts);
+
+// cumulative hit-rate with its 95% band, Kronos vs baseline, 50% reference
+function chart(cv, t) {
+  const dpr = devicePixelRatio || 1, W = cv.clientWidth, H = 150;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const g = cv.getContext("2d"); g.scale(dpr, dpr);
+  const css = getComputedStyle(document.documentElement);
+  const col = { k: css.getPropertyValue("--teal").trim(), b: css.getPropertyValue("--gold").trim(), mute: css.getPropertyValue("--mute").trim(), line: css.getPropertyValue("--line2").trim() };
+  const pad = { l: 34, r: 8, t: 8, b: 16 };
+  const es = Object.entries(t.engines).filter(([, m]) => m.curve && m.curve.length);
+  if (!es.length) { g.fillStyle = col.mute; g.font = "11px JetBrains Mono, monospace"; g.fillText("la curva aparece cuando haya rondas", pad.l, H / 2); return; }
+  const maxX = Math.max(...es.map(([, m]) => m.curve[m.curve.length - 1][0]), t.total || 1);
+  const x = (v) => pad.l + (v / maxX) * (W - pad.l - pad.r);
+  const y = (v) => pad.t + (1 - (v - 0.2) / 0.6) * (H - pad.t - pad.b); // 20%..80%
+  g.font = "10px JetBrains Mono, monospace"; g.fillStyle = col.mute; g.strokeStyle = col.line; g.lineWidth = 1;
+  [0.3, 0.5, 0.7].forEach((v) => { g.beginPath(); g.moveTo(pad.l, y(v)); g.lineTo(W - pad.r, y(v)); g.setLineDash(v === 0.5 ? [4, 4] : []); g.stroke(); g.fillText((v * 100) + "%", 2, y(v) + 3); });
+  g.setLineDash([]);
+  es.forEach(([e, m]) => {
+    const c = e === "bootstrap" ? col.b : col.k, cl = (v) => Math.max(0.2, Math.min(0.8, v));
+    if (e !== "bootstrap") { // confidence band for Kronos only
+      g.beginPath(); m.curve.forEach((p, i) => (i ? g.lineTo(x(p[0]), y(cl(p[3]))) : g.moveTo(x(p[0]), y(cl(p[3])))));
+      for (let i = m.curve.length - 1; i >= 0; i--) g.lineTo(x(m.curve[i][0]), y(cl(m.curve[i][2])));
+      g.closePath(); g.fillStyle = c + "22"; g.fill();
+    }
+    g.beginPath(); m.curve.forEach((p, i) => (i ? g.lineTo(x(p[0]), y(cl(p[1]))) : g.moveTo(x(p[0]), y(cl(p[1])))));
+    g.strokeStyle = c; g.lineWidth = 2; g.lineJoin = "round"; g.stroke();
+  });
+  const wb = g.measureText("modelo base").width, wk = g.measureText("Kronos").width;
+  g.fillStyle = col.b; g.fillText("modelo base", W - pad.r - wb, H - 3);
+  g.fillStyle = col.k; g.fillText("Kronos", W - pad.r - wb - wk - 12, H - 3);
+}
+
+tick(); setInterval(tick, 5000);
+</script>
+</body>
+</html>

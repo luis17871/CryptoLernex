@@ -161,3 +161,20 @@ def test_tracks_grid_and_horizon_filter(monkeypatch):
     assert lab.needs_new_round("BTCUSDT", "1h", 24, 1)
     assert lab.store.latest("BTCUSDT", "1h", horizon=4)["horizon"] == 4
     assert len(lab.store.history("BTCUSDT", "1h", horizon=24)) == 1
+
+
+def test_monitor_collects_progress_and_results(tmp_path):
+    import json as _json
+
+    from app.monitor import collect
+
+    df = _df(700)
+    backtest_run(df, {"bootstrap": BootstrapEngine()}, horizon=4, rounds=20, step=4, context=100, samples=10,
+                 temperature=1.0, top_p=1.0, progress=False, progress_file=str(tmp_path / "t1.progress.json"),
+                 meta={"symbol": "BTCUSDT", "model": "kronos-small", "horizon": 4})
+    (tmp_path / "plan.json").write_text("﻿" + _json.dumps([{"name": "t1"}, {"name": "t2"}]), encoding="utf-8")
+    (tmp_path / "t2.failed").write_text("x")
+    out = {t["name"]: t for t in collect(tmp_path)["tests"]}
+    assert out["t1"]["done"] == 20 and out["t1"]["engines"]["bootstrap"]["n"] == 20
+    assert out["t1"]["engines"]["bootstrap"]["curve"][-1][0] == 20
+    assert out["t2"]["status"] == "failed"

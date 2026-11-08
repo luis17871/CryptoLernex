@@ -152,3 +152,15 @@ async def events():
             lab.events.subs.discard(q)
 
     return StreamingResponse(gen(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
+
+
+# Long-backtest monitor, also reachable from the live lab (same page as app.monitor)
+@app.get("/backtests")
+def backtests_page():
+    return FileResponse(ROOT / "web" / "backtests.html")
+
+
+@app.get("/api/backtests")
+def backtests_api():
+    from .monitor import collect
+    return collect()
