@@ -7,178 +7,312 @@
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/style.css">
 <style>
-  .bt-wrap { max-width: 1400px; margin: 0 auto; padding: 14px 16px; display: grid; gap: 14px; }
-  .bt-sum { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
-  .bt-sum .card b { display: block; font-size: 24px; color: var(--white); margin-top: 4px; }
-  .bt-bar { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; }
-  .bt-bar i { display: block; height: 100%; background: var(--teal); box-shadow: 0 0 10px var(--teal); transition: width .6s; }
-  .bt-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); }
-  .bt-card { display: grid; gap: 8px; align-content: start; }
-  .bt-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-  .bt-head h3 { margin: 0; font-size: 14px; color: var(--white); letter-spacing: .04em; }
-  .bt-sub { color: var(--mute); font-size: 11px; }
-  .st { padding: 2px 8px; border-radius: 4px; font-size: 10px; letter-spacing: .08em; font-weight: 700; }
-  .st.running { background: #0f2f33; color: var(--teal); }
-  .st.done { background: #0f3a2c; color: var(--green); }
-  .st.queued { background: #1a2632; color: var(--mute); }
-  .st.stopped, .st.failed { background: #3a1220; color: var(--red); }
-  .bt-card table td, .bt-card table th { font-size: 11px; }
+  .bt { max-width: 1500px; margin: 0 auto; padding: 14px 16px; display: grid; gap: 12px; }
+  .bt > *, .bt .card, .row2 > *, .row3 > *, .kpis > * { min-width: 0; }
+  .tabs { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
+  .tab { flex: 0 0 auto; display: grid; gap: 5px; min-width: 190px; padding: 9px 11px; border: 1px solid var(--line2); border-radius: 8px;
+         background: var(--panel); cursor: pointer; text-align: left; color: var(--txt); font: inherit; letter-spacing: 0; font-weight: 400; }
+  .tab.sel { border-color: #1f6f68; box-shadow: 0 0 0 1px #1f6f68 inset, 0 0 18px -6px var(--teal); }
+  .tab .n { color: var(--white); font-weight: 700; font-size: 12px; }
+  .tab .s { display: flex; justify-content: space-between; font-size: 10px; color: var(--mute); }
+  .mini { height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+  .mini i { display: block; height: 100%; background: var(--teal); box-shadow: 0 0 8px var(--teal); }
+  .st { font-size: 9px; letter-spacing: .1em; font-weight: 700; padding: 1px 6px; border-radius: 3px; }
+  .st.running { background: #0f2f33; color: var(--teal); } .st.done { background: #0f3a2c; color: var(--green); }
+  .st.queued { background: #1a2632; color: var(--mute); } .st.stopped, .st.failed { background: #3a1220; color: var(--red); }
+  .hero { position: relative; height: min(56vh, 560px); min-height: 360px; padding: 0; overflow: hidden; border-color: #183040;
+          box-shadow: 0 0 0 1px #0b1a24 inset, 0 20px 60px -30px #0ff3; }
+  .hero canvas { width: 100%; height: 100%; display: block; cursor: crosshair; }
+  .hcard { position: absolute; left: 12px; top: 12px; z-index: 2; min-width: 220px; font-size: 11px; padding: 8px 10px; }
+  .hcard .h { display: flex; justify-content: space-between; gap: 10px; color: var(--mute); border-bottom: 1px solid var(--line); padding-bottom: 4px; margin-bottom: 4px; }
+  .hcard .h b { color: var(--white); } .hcard .row { display: flex; justify-content: space-between; gap: 12px; } .hcard .row span { color: var(--mute); }
+  .htag { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); z-index: 2; border: 1px solid #1d4a4f; background: rgba(6,20,24,.85);
+          color: var(--teal); padding: 3px 10px; border-radius: 4px; font-size: 11px; letter-spacing: .06em; white-space: nowrap; }
+  .hleg { position: absolute; right: 80px; top: 40px; display: flex; gap: 12px; color: var(--mute); font-size: 10px; z-index: 2; flex-wrap: wrap; }
+  .hleg i { display: inline-block; width: 14px; height: 3px; margin-right: 4px; vertical-align: middle; border-radius: 2px; }
+  .kpis { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); }
+  .kpi .big { font-size: 34px; font-weight: 700; line-height: 1.05; margin: 2px 0 6px; }
+  .kpi .big.gold { color: var(--gold); text-shadow: 0 0 18px #ffc24a55; } .kpi .big.teal { color: var(--teal); text-shadow: 0 0 18px #2ee6c855; }
+  .kpi .big.white { color: var(--white); }
+  .ci { position: relative; height: 18px; margin: 4px 0 2px; }
+  .ci .axis { position: absolute; left: 0; right: 0; top: 8px; height: 2px; background: var(--line2); }
+  .ci .fifty { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--gold); opacity: .7; }
+  .ci .rng { position: absolute; top: 5px; height: 8px; border-radius: 4px; background: #2ee6c855; border: 1px solid var(--teal); }
+  .ci .pt { position: absolute; top: 3px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 10px var(--teal); }
+  .verdict { display: inline-block; padding: 5px 14px; border-radius: 4px; font-weight: 700; letter-spacing: .1em; font-size: 13px; border: 1px solid; }
+  .verdict.ventaja { color: var(--green); border-color: var(--green); box-shadow: 0 0 14px -4px var(--green) inset; }
+  .verdict.peor { color: var(--red); border-color: var(--red); box-shadow: 0 0 14px -4px var(--red) inset; }
+  .verdict.nc { color: var(--gold); border-color: var(--gold); box-shadow: 0 0 14px -4px var(--gold) inset; }
+  .row2 { display: grid; gap: 12px; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); }
+  .row3 { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); }
+  canvas.ch { width: 100%; height: 210px; display: block; }
+  #term { height: 260px; overflow: auto; font-size: 11px; white-space: pre; }
+  #term div { padding: 1px 0; } #term .t { color: #3a4e60; } #term .hit { color: var(--green); } #term .miss { color: var(--red); }
+  #term .g { color: var(--teal2); } #term .gold { color: var(--gold); }
+  .tblwrap2 { overflow-x: auto; } .tblwrap2 table { min-width: 720px; }
+  .up { color: var(--teal); } .dn { color: var(--red); } .muted { color: var(--mute); }
   .vd { padding: 1px 6px; border-radius: 3px; font-size: 10px; }
-  .vd.ventaja { background: #0f3a2c; color: var(--green); }
-  .vd.peor { background: #3a1220; color: var(--red); }
-  .vd.nc { background: #1a2632; color: var(--gold); }
-  canvas.bt-chart { width: 100%; height: 150px; display: block; }
-  .bt-empty { color: var(--mute); text-align: center; padding: 40px 0; }
-  .up { color: var(--teal); } .dn { color: var(--red); }
-  .muted { color: var(--mute); }
-  .bt-wrap > section, .bt-card { min-width: 0; }
-  .bt-wrap .tblwrap { overflow-x: auto; max-height: none; }
-  .bt-wrap table { min-width: 640px; }
-  .bt-card table { min-width: 0; }
-  #dir { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; max-width: 50vw; }
-  @media (max-width: 640px) { #dir { display: none; } }
+  .vd.ventaja { background: #0f3a2c; color: var(--green); } .vd.peor { background: #3a1220; color: var(--red); } .vd.nc { background: #1a2632; color: var(--gold); }
+  .tip2 { position: absolute; pointer-events: none; display: none; z-index: 3; background: rgba(5,10,16,.94); border: 1px solid var(--line2);
+          border-radius: 6px; padding: 6px 8px; font-size: 11px; white-space: nowrap; }
+  @media (max-width: 900px) { .row2 { grid-template-columns: 1fr; } }
+  @media (max-width: 640px) { .hcard, .hleg { display: none; } .kpi .big { font-size: 28px; } }
 </style>
 </head>
 <body>
 <header class="top">
-  <div class="brand"><span class="dots"><i></i><i></i><i></i></span><b>KRONOS</b>&nbsp;BACKTESTS</div>
+  <div class="brand"><span class="dots"><i></i><i></i><i></i></span><b>KRONOS</b>&nbsp;BACKTEST</div>
   <span class="chip live"><i class="pulse"></i><span id="liveTxt">live</span></span>
+  <span class="chip" id="overall">-</span>
   <div class="spacer"></div>
-  <span class="small" id="dir"></span>
+  <span class="lastpx">rondas evaluadas <b id="allRounds">-</b></span>
 </header>
-<div class="bt-wrap">
-  <section class="bt-sum">
-    <div class="card"><div class="lbl">AVANCE TOTAL</div><b id="sTests">-</b><div class="bt-bar"><i id="sBar" style="width:0"></i></div></div>
-    <div class="card"><div class="lbl">RONDAS EVALUADAS</div><b id="sRounds">-</b></div>
-    <div class="card"><div class="lbl">TIEMPO RESTANTE (prueba actual)</div><b id="sEta">-</b></div>
-    <div class="card"><div class="lbl">KRONOS CON VENTAJA</div><b id="sEdge">-</b></div>
+
+<div class="bt">
+  <nav class="tabs" id="tabs"></nav>
+
+  <section class="card hero">
+    <div class="hcard card inset" id="hcard"></div>
+    <div class="htag" id="htag">-</div>
+    <div class="hleg"><span><i style="background:#2ee6c8"></i>banda p10–p90</span><span><i style="background:#ffc24a"></i>mediana</span>
+      <span><i style="background:#eef5fb"></i>precio real</span><span><i style="background:#3ddc84"></i>acierto</span><span><i style="background:#ff4d6d"></i>fallo</span></div>
+    <canvas id="hero"></canvas>
+    <div class="tip2" id="tip"></div>
+  </section>
+
+  <section class="kpis">
+    <div class="card kpi"><div class="lbl">ACIERTO KRONOS <span class="r" id="kN"></span></div><div class="big gold" id="kHit">-</div>
+      <div class="ci" id="kCi"></div><div class="small" id="kCiTxt">-</div></div>
+    <div class="card kpi"><div class="lbl">ACIERTO MODELO BASE</div><div class="big white" id="bHit">-</div>
+      <div class="ci" id="bCi"></div><div class="small" id="bCiTxt">-</div></div>
+    <div class="card kpi"><div class="lbl">COBERTURA p10–p90 <span class="r">ideal 80 %</span></div><div class="big teal" id="kCov">-</div>
+      <div class="small" id="covTxt">-</div></div>
+    <div class="card kpi"><div class="lbl">VEREDICTO <span class="r" id="pv"></span></div><div id="verdict" style="margin:8px 0">-</div>
+      <div class="small" id="progTxt">-</div><div class="mini" style="margin-top:6px"><i id="progBar" style="width:0"></i></div></div>
+  </section>
+
+  <section class="row2">
+    <div class="card"><div class="lbl">ACIERTO ACUMULADO <span class="r">banda = IC 95 % de Kronos · línea punteada = 50 %</span></div><canvas class="ch" id="cum"></canvas></div>
+    <div class="card"><div class="lbl">REGISTRO <span class="r" id="termInfo">últimas rondas</span></div><div id="term"></div></div>
+  </section>
+
+  <section class="row3">
+    <div class="card"><div class="lbl">CALIBRACIÓN <span class="r">P(sube) predicha vs real · diagonal = perfecta</span></div><canvas class="ch" id="cal"></canvas></div>
+    <div class="card"><div class="lbl">ACIERTO MÓVIL <span class="r">últimas 50 rondas</span></div><canvas class="ch" id="roll"></canvas></div>
   </section>
 
   <section class="card">
-    <div class="lbl">RESUMEN <span class="r">acierto de dirección en rondas que no se solapan, IC 95 %</span></div>
-    <div class="tblwrap"><table id="sumTbl"></table></div>
+    <div class="lbl">TODAS LAS PRUEBAS <span class="r">rondas que no se solapan</span></div>
+    <div class="tblwrap2"><table id="sumTbl"></table></div>
   </section>
-
-  <section class="bt-grid" id="cards"></section>
-  <p class="disclaimer">Cada ronda solo ve velas anteriores a su momento. "Ventaja" exige que todo el intervalo de confianza quede por encima de 50 %. No es asesoría financiera.</p>
+  <p class="disclaimer">Cada ronda solo ve las velas anteriores a su momento. "Ventaja" exige que todo el intervalo de confianza quede sobre 50 %. No es asesoría financiera.</p>
 </div>
+
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
+const C = { teal: "#2ee6c8", red: "#ff4d6d", gold: "#ffc24a", white: "#eef5fb", mute: "#5f7385", grid: "#0f1a24", green: "#3ddc84", line: "#1f3140" };
 const pct = (v, d = 1) => (v == null || isNaN(v) ? "-" : (v * 100).toFixed(d) + "%");
 const spct = (v) => (v == null ? "-" : (v > 0 ? "+" : "") + (v * 100).toFixed(1) + "%");
+const fmt = (v) => { if (v == null || isNaN(v)) return "-"; const a = Math.abs(v), d = a >= 1000 ? 0 : a >= 10 ? 2 : 4;
+  return v.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d }); };
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const dur = (s) => { if (s == null) return "-"; s = Math.round(s); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60); return h ? `${h} h ${m} min` : m ? `${m} min` : `${s} s`; };
 const ST = { running: "CORRIENDO", done: "LISTO", queued: "EN COLA", stopped: "DETENIDO", failed: "FALLÓ" };
 const vClass = (v) => (v === "ventaja" ? "ventaja" : v === "peor que azar" ? "peor" : "nc");
 const engName = (e) => (e === "bootstrap" ? "modelo base" : e);
-const title = (t) => {
-  const m = t.meta || {}, p = t.plan || {};
-  const sym = (m.symbol || p.symbol || "").replace("USDT", ""), mod = (m.model || p.model || "").replace("kronos-", "Kronos-");
-  const h = m.horizon || p.horizon;
-  return sym ? `${sym} · ${mod} · horizonte ${h} h` : t.name;
-};
+const day = (ts) => new Date(ts * 1000).toISOString().slice(0, 10);
+const label = (t) => { const m = t.meta || {}, p = t.plan || {}; const s = (m.symbol || p.symbol || "").replace("USDT", "");
+  const mod = (m.model || p.model || "").replace("kronos-", ""); const h = m.horizon || p.horizon; return s ? `${s} · ${mod} · ${h} h` : t.name; };
+let S = { data: null, sel: null, hover: null };
+try { S.sel = localStorage.getItem("bt.sel"); } catch (e) {}
 
 async function tick() {
-  try {
-    const r = await fetch("/api/backtests"); const d = await r.json();
-    $("liveTxt").textContent = "live"; render(d);
-  } catch (e) { $("liveTxt").textContent = "sin conexión"; }
+  try { const r = await fetch("/api/backtests"); S.data = await r.json(); $("liveTxt").textContent = "live"; render(); }
+  catch (e) { $("liveTxt").textContent = "sin conexión"; }
 }
+const kronosOf = (t) => { const e = Object.keys(t.engines || {}).find((x) => x !== "bootstrap"); return e ? [e, t.engines[e]] : [null, {}]; };
+const current = () => { const T = S.data.tests; return T.find((t) => t.name === S.sel) || T.find((t) => t.status === "running") || T.find((t) => t.status === "done") || T[0]; };
 
-function render(d) {
-  $("dir").textContent = d.dir;
-  const T = d.tests;
-  if (!T.length) { $("cards").innerHTML = '<div class="bt-empty card">Todavía no hay pruebas. Se mostrarán aquí en cuanto empiece la primera.</div>'; return; }
+function render() {
+  const T = S.data.tests;
+  if (!T.length) { $("htag").textContent = "Todavía no hay pruebas"; return; }
   const done = T.filter((t) => t.status === "done").length;
-  $("sTests").textContent = `${done} de ${T.length} pruebas`;
-  $("sBar").style.width = (100 * (done + T.filter((t) => t.status === "running").reduce((s, t) => s + (t.total ? t.done / t.total : 0), 0)) / T.length) + "%";
-  $("sRounds").textContent = T.reduce((s, t) => s + (t.done || 0), 0).toLocaleString("es");
-  const run = T.find((t) => t.status === "running");
-  $("sEta").textContent = run ? dur(run.eta_s) : done === T.length ? "terminado" : "-";
-  const graded = T.filter((t) => t.engines && Object.keys(t.engines).some((e) => e !== "bootstrap" && t.engines[e].n));
-  const edge = graded.filter((t) => Object.entries(t.engines).some(([e, m]) => e !== "bootstrap" && m.verdict === "ventaja")).length;
-  $("sEdge").textContent = graded.length ? `${edge} de ${graded.length}` : "-";
+  $("overall").textContent = `${done}/${T.length} pruebas listas`;
+  $("allRounds").textContent = T.reduce((s, t) => s + (t.done || 0), 0).toLocaleString("es");
+  const t = current();
+  // tabs
+  $("tabs").innerHTML = T.map((x) => { const [, k] = kronosOf(x); const p = x.total ? x.done / x.total : 0;
+    return `<button class="tab ${x === t ? "sel" : ""}" data-n="${esc(x.name)}"><span class="s"><span class="n">${esc(label(x))}</span><span class="st ${x.status}">${ST[x.status] || x.status}</span></span>
+      <span class="s"><span>${x.total ? `${x.done}/${x.total}` : "en espera"}</span><span>${k.hit_rate != null ? "acierto " + pct(k.hit_rate) : ""}</span></span>
+      <span class="mini"><i style="width:${p * 100}%"></i></span></button>`; }).join("");
+  $("tabs").querySelectorAll(".tab").forEach((b) => (b.onclick = () => { S.sel = b.dataset.n; try { localStorage.setItem("bt.sel", S.sel); } catch (e) {} render(); }));
 
-  // summary table
+  const [kn, k] = kronosOf(t), b = (t.engines || {}).bootstrap || {};
+  const m = t.meta || {};
+  $("hcard").innerHTML = `<div class="h"><b>${esc((m.model || t.plan?.model || "-"))}</b><span>${esc((m.symbol || t.plan?.symbol || ""))} ${esc(m.interval || "1h")}</span></div>
+    <div class="row"><span>horizonte</span>${m.horizon || t.plan?.horizon || "-"} velas</div>
+    <div class="row"><span>trayectorias</span>${m.samples || "-"}</div>
+    <div class="row"><span>periodo</span>${m.first ? esc(m.first.slice(0, 10)) + " → " + esc((m.last || "").slice(0, 10)) : "-"}</div>
+    <div class="row"><span>rondas</span>${t.total ? `${t.done} / ${t.total}` : "-"}</div>
+    <div class="row"><span>tiempo restante</span>${t.status === "running" ? dur(t.eta_s) : t.status === "done" ? "terminado" : "-"}</div>`;
+  $("htag").textContent = `${label(t).toUpperCase()} / ${ST[t.status] || t.status}${t.last_anchor ? " / " + String(t.last_anchor).slice(0, 10) : ""}`;
+
+  $("kHit").textContent = pct(k.hit_rate); $("kN").textContent = k.n ? `${k.hits ?? Math.round(k.hit_rate * k.n)}/${k.n}` : "";
+  $("bHit").textContent = pct(b.hit_rate);
+  ciBar($("kCi"), k); ciBar($("bCi"), b);
+  $("kCiTxt").textContent = k.n ? `IC 95 %: ${pct(k.ci_low, 0)} a ${pct(k.ci_high, 0)}` : "-";
+  $("bCiTxt").textContent = b.n ? `IC 95 %: ${pct(b.ci_low, 0)} a ${pct(b.ci_high, 0)}` : "-";
+  $("kCov").textContent = pct(k.coverage, 0);
+  $("covTxt").textContent = b.n ? `modelo base ${pct(b.coverage, 0)} · ${k.coverage < 0.7 ? "Kronos sobreconfiado" : k.coverage > 0.9 ? "Kronos demasiado cauto" : "calibración razonable"}` : "-";
+  $("verdict").innerHTML = k.verdict ? `<span class="verdict ${vClass(k.verdict)}">${esc(k.verdict.toUpperCase())}</span>` : "-";
+  $("pv").textContent = k.n ? `p = ${k.p_value.toFixed(3)}` : "";
+  $("progTxt").textContent = t.total ? `${t.done} de ${t.total} rondas${t.status === "running" ? " · faltan " + dur(t.eta_s) : ""}` : "en espera";
+  $("progBar").style.width = (t.total ? (t.done / t.total) * 100 : 0) + "%";
+
+  // terminal log of the latest rounds
+  const ser = k.series || [];
+  $("termInfo").textContent = ser.length ? `últimas ${Math.min(ser.length, 60)} de ${k.n} rondas` : "";
+  $("term").innerHTML = ser.length ? ser.slice(-60).map((r) => {
+    const [ts, last, med, , , act, hit, pu] = r;
+    return `<div><span class="t">${day(ts)}</span>  <span class="${hit ? "hit" : "miss"}">${hit ? "HIT " : "MISS"}</span>  last ${fmt(last).padStart(9)}  med <span class="gold">${fmt(med).padStart(9)}</span>  real ${fmt(act).padStart(9)}  <span class="g">P(up) ${pct(pu, 0).padStart(4)}</span></div>`;
+  }).join("") : `<div class="t">El registro detallado aparece en las pruebas que empiecen después de esta actualización.</div>`;
+  const el = $("term"); el.scrollTop = el.scrollHeight;
+
+  // table of every test
   let rows = "<tr><th>prueba</th><th>motor</th><th>estado</th><th>rondas</th><th>acierto</th><th>IC 95 %</th><th>p</th><th>cobertura</th><th>CRPS skill</th><th>veredicto</th></tr>";
-  T.forEach((t) => {
-    const es = Object.keys(t.engines || {});
-    (es.length ? es : [null]).forEach((e, i) => {
-      const m = e ? t.engines[e] : {};
-      rows += `<tr><td>${i ? "" : esc(title(t))}</td><td>${e ? esc(engName(e)) : "-"}</td>
-        <td>${i ? "" : `<span class="st ${t.status}">${ST[t.status] || t.status}</span>`}</td>
-        <td>${m.n ?? "-"}</td><td class="${m.hit_rate > 0.5 ? "up" : m.hit_rate < 0.5 ? "dn" : ""}">${pct(m.hit_rate)}</td>
-        <td class="muted">${m.n ? `${pct(m.ci_low, 0)}–${pct(m.ci_high, 0)}` : "-"}</td>
-        <td>${m.p_value != null && m.n ? m.p_value.toFixed(3) : "-"}</td><td>${pct(m.coverage, 0)}</td>
-        <td class="${m.crps_skill > 0 ? "up" : m.crps_skill < 0 ? "dn" : ""}">${spct(m.crps_skill)}</td>
-        <td>${m.verdict ? `<span class="vd ${vClass(m.verdict)}">${esc(m.verdict)}</span>` : "-"}</td></tr>`;
-    });
-  });
+  T.forEach((x) => { const es = Object.keys(x.engines || {}); (es.length ? es : [null]).forEach((e, i) => { const mm = e ? x.engines[e] : {};
+    rows += `<tr><td>${i ? "" : esc(label(x))}</td><td>${e ? esc(engName(e)) : "-"}</td><td>${i ? "" : `<span class="st ${x.status}">${ST[x.status] || x.status}</span>`}</td>
+      <td>${mm.n ?? "-"}</td><td class="${mm.hit_rate > 0.5 ? "up" : mm.hit_rate < 0.5 ? "dn" : ""}">${pct(mm.hit_rate)}</td>
+      <td class="muted">${mm.n ? `${pct(mm.ci_low, 0)}–${pct(mm.ci_high, 0)}` : "-"}</td><td>${mm.n ? mm.p_value.toFixed(3) : "-"}</td>
+      <td>${pct(mm.coverage, 0)}</td><td class="${mm.crps_skill > 0 ? "up" : mm.crps_skill < 0 ? "dn" : ""}">${spct(mm.crps_skill)}</td>
+      <td>${mm.verdict ? `<span class="vd ${vClass(mm.verdict)}">${esc(mm.verdict)}</span>` : "-"}</td></tr>`; }); });
   $("sumTbl").innerHTML = rows;
-
-  // cards
-  const box = $("cards");
-  T.forEach((t) => {
-    let c = box.querySelector(`[data-name="${CSS.escape(t.name)}"]`);
-    if (!c) { c = document.createElement("div"); c.className = "card bt-card"; c.dataset.name = t.name; box.appendChild(c); }
-    const pctDone = t.total ? t.done / t.total : 0;
-    const es = Object.keys(t.engines || {});
-    c.innerHTML = `<div class="bt-head"><h3>${esc(title(t))}</h3><span class="st ${t.status}">${ST[t.status] || t.status}</span></div>
-      <div class="bt-sub">${t.total ? `${t.done} de ${t.total} rondas` : "esperando turno"}${t.status === "running" ? ` · faltan ${dur(t.eta_s)}` : ""}${t.last_anchor ? ` · última ronda ${esc(String(t.last_anchor).slice(0, 16))}` : ""}</div>
-      <div class="bt-bar"><i style="width:${pctDone * 100}%"></i></div>
-      ${es.length ? `<table><tr><th></th>${es.map((e) => `<th>${esc(engName(e))}</th>`).join("")}</tr>
-        <tr><td>acierto</td>${es.map((e) => `<td>${pct(t.engines[e].hit_rate)}</td>`).join("")}</tr>
-        <tr><td>IC 95 %</td>${es.map((e) => `<td class="muted">${t.engines[e].n ? `${pct(t.engines[e].ci_low, 0)}–${pct(t.engines[e].ci_high, 0)}` : "-"}</td>`).join("")}</tr>
-        <tr><td>cobertura p10–p90</td>${es.map((e) => `<td>${pct(t.engines[e].coverage, 0)}</td>`).join("")}</tr>
-        <tr><td>veredicto</td>${es.map((e) => `<td>${t.engines[e].verdict ? `<span class="vd ${vClass(t.engines[e].verdict)}">${esc(t.engines[e].verdict)}</span>` : "-"}</td>`).join("")}</tr></table>
-        <canvas class="bt-chart"></canvas>` : ""}`;
-  });
-  LAST = T;
-  drawCharts();
-  box.querySelectorAll(".bt-card").forEach((c) => { if (!T.some((t) => t.name === c.dataset.name)) c.remove(); });
+  requestAnimationFrame(drawAll);
 }
 
-let LAST = [];
-function drawCharts() {  // after layout settles, so each canvas has its final width
-  requestAnimationFrame(() => LAST.forEach((t) => {
-    const cv = document.querySelector(`[data-name="${CSS.escape(t.name)}"] canvas`);
-    if (cv) chart(cv, t);
-  }));
-}
-window.addEventListener("resize", drawCharts);
-
-// cumulative hit-rate with its 95% band, Kronos vs baseline, 50% reference
-function chart(cv, t) {
-  const dpr = devicePixelRatio || 1, W = cv.clientWidth, H = 150;
-  cv.width = W * dpr; cv.height = H * dpr;
-  const g = cv.getContext("2d"); g.scale(dpr, dpr);
-  const css = getComputedStyle(document.documentElement);
-  const col = { k: css.getPropertyValue("--teal").trim(), b: css.getPropertyValue("--gold").trim(), mute: css.getPropertyValue("--mute").trim(), line: css.getPropertyValue("--line2").trim() };
-  const pad = { l: 34, r: 8, t: 8, b: 16 };
-  const es = Object.entries(t.engines).filter(([, m]) => m.curve && m.curve.length);
-  if (!es.length) { g.fillStyle = col.mute; g.font = "11px JetBrains Mono, monospace"; g.fillText("la curva aparece cuando haya rondas", pad.l, H / 2); return; }
-  const maxX = Math.max(...es.map(([, m]) => m.curve[m.curve.length - 1][0]), t.total || 1);
-  const x = (v) => pad.l + (v / maxX) * (W - pad.l - pad.r);
-  const y = (v) => pad.t + (1 - (v - 0.2) / 0.6) * (H - pad.t - pad.b); // 20%..80%
-  g.font = "10px JetBrains Mono, monospace"; g.fillStyle = col.mute; g.strokeStyle = col.line; g.lineWidth = 1;
-  [0.3, 0.5, 0.7].forEach((v) => { g.beginPath(); g.moveTo(pad.l, y(v)); g.lineTo(W - pad.r, y(v)); g.setLineDash(v === 0.5 ? [4, 4] : []); g.stroke(); g.fillText((v * 100) + "%", 2, y(v) + 3); });
-  g.setLineDash([]);
-  es.forEach(([e, m]) => {
-    const c = e === "bootstrap" ? col.b : col.k, cl = (v) => Math.max(0.2, Math.min(0.8, v));
-    if (e !== "bootstrap") { // confidence band for Kronos only
-      g.beginPath(); m.curve.forEach((p, i) => (i ? g.lineTo(x(p[0]), y(cl(p[3]))) : g.moveTo(x(p[0]), y(cl(p[3])))));
-      for (let i = m.curve.length - 1; i >= 0; i--) g.lineTo(x(m.curve[i][0]), y(cl(m.curve[i][2])));
-      g.closePath(); g.fillStyle = c + "22"; g.fill();
-    }
-    g.beginPath(); m.curve.forEach((p, i) => (i ? g.lineTo(x(p[0]), y(cl(p[1]))) : g.moveTo(x(p[0]), y(cl(p[1])))));
-    g.strokeStyle = c; g.lineWidth = 2; g.lineJoin = "round"; g.stroke();
-  });
-  const wb = g.measureText("modelo base").width, wk = g.measureText("Kronos").width;
-  g.fillStyle = col.b; g.fillText("modelo base", W - pad.r - wb, H - 3);
-  g.fillStyle = col.k; g.fillText("Kronos", W - pad.r - wb - wk - 12, H - 3);
+function ciBar(el, m) {
+  if (!m.n) { el.innerHTML = ""; return; }
+  const x = (v) => Math.max(0, Math.min(100, ((v - 0.3) / 0.4) * 100)); // 30%..70%
+  el.innerHTML = `<div class="axis"></div><div class="fifty" style="left:${x(0.5)}%"></div>
+    <div class="rng" style="left:${x(m.ci_low)}%;width:${x(m.ci_high) - x(m.ci_low)}%"></div><div class="pt" style="left:${x(m.hit_rate)}%"></div>`;
 }
 
+function setup(cv) {
+  const dpr = devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+  if (cv.width !== W * dpr || cv.height !== H * dpr) { cv.width = W * dpr; cv.height = H * dpr; }
+  const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+  g.font = "10px JetBrains Mono, monospace"; return [g, W, H];
+}
+function drawAll() { if (!S.data || !S.data.tests.length) return; const t = current(); hero(t); cum(t); cal(t); roll(t); }
+
+// ---- hero: real price + every forecast as a glowing fan (p10-p90) with its median
+function hero(t) {
+  const cv = $("hero"); const [g, W, H] = setup(cv);
+  const bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, "#071019"); bg.addColorStop(1, "#04070b"); g.fillStyle = bg; g.fillRect(0, 0, W, H);
+  const [, k] = kronosOf(t); const s = k.series || [];
+  if (!s.length) { g.fillStyle = C.mute; g.font = "12px JetBrains Mono, monospace"; g.textAlign = "center";
+    g.fillText(t.status === "queued" ? "Esta prueba está en cola." : "El gráfico detallado aparece en las pruebas que empiecen después de esta actualización.", W / 2, H / 2); g.textAlign = "left"; return; }
+  const hz = (t.meta && t.meta.horizon) || 24, step = 3600 * hz;
+  const pad = { l: 12, r: 78, t: 44, b: 26 };
+  const t0 = s[0][0], t1 = s[s.length - 1][0] + step;
+  let lo = Infinity, hi = -Infinity; s.forEach((r) => { lo = Math.min(lo, r[3], r[1], r[5]); hi = Math.max(hi, r[4], r[1], r[5]); });
+  const mg = (hi - lo) * 0.06; lo -= mg; hi += mg;
+  const x = (ts) => pad.l + ((ts - t0) / (t1 - t0)) * (W - pad.l - pad.r);
+  const y = (v) => pad.t + (1 - (v - lo) / (hi - lo)) * (H - pad.t - pad.b);
+  // grid + price axis
+  const ticks = nice(lo, hi, 6); g.textBaseline = "middle";
+  ticks.forEach((v) => { g.strokeStyle = C.grid; g.beginPath(); g.moveTo(pad.l, y(v)); g.lineTo(W - pad.r, y(v)); g.stroke(); g.fillStyle = C.mute; g.fillText(fmt(v), W - pad.r + 8, y(v)); });
+  // fans
+  g.globalCompositeOperation = "lighter";
+  const alpha = Math.max(0.16, Math.min(0.32, 30 / s.length));
+  s.forEach((r) => { const [ts, last, med, p10, p90, act, hit] = r; const xa = x(ts), xb = x(ts + step);
+    const grd = g.createLinearGradient(xa, 0, xb, 0); grd.addColorStop(0, `rgba(46,230,200,${alpha * 1.6})`); grd.addColorStop(1, `rgba(46,230,200,${alpha * 0.5})`);
+    g.fillStyle = grd; g.beginPath(); g.moveTo(xa, y(last)); g.lineTo(xb, y(p90)); g.lineTo(xb, y(p10)); g.closePath(); g.fill();
+    g.strokeStyle = `rgba(46,230,200,${alpha})`; g.lineWidth = 0.8; g.stroke();
+    g.strokeStyle = `rgba(255,194,74,${Math.min(0.9, alpha * 3)})`; g.lineWidth = 1.2; g.beginPath(); g.moveTo(xa, y(last)); g.lineTo(xb, y(med)); g.stroke(); });
+  g.globalCompositeOperation = "source-over";
+  // real price line through anchors and outcomes
+  g.save(); g.shadowColor = C.white; g.shadowBlur = 6; g.strokeStyle = "rgba(238,245,251,.85)"; g.lineWidth = 1.4; g.beginPath();
+  s.forEach((r, i) => (i ? g.lineTo(x(r[0]), y(r[1])) : g.moveTo(x(r[0]), y(r[1]))));
+  const L = s[s.length - 1]; g.lineTo(x(L[0] + step), y(L[5])); g.stroke(); g.restore();
+  // outcome dots: green hit / red miss
+  s.forEach((r) => { g.fillStyle = r[6] ? C.green : C.red; g.globalAlpha = 0.9; g.beginPath(); g.arc(x(r[0] + step), y(r[5]), s.length > 200 ? 1.6 : 2.6, 0, 7); g.fill(); });
+  g.globalAlpha = 1;
+  // hit strip at the bottom
+  s.forEach((r) => { g.fillStyle = r[6] ? "rgba(61,220,132,.8)" : "rgba(255,77,109,.8)"; g.fillRect(x(r[0]), H - pad.b + 4, Math.max(1, x(r[0] + step) - x(r[0]) - 1), 4); });
+  // latest forecast highlighted, like the live panel
+  const xa = x(L[0]), xb = x(L[0] + step);
+  const rg = g.createRadialGradient(xa, y(L[1]), 0, xa, y(L[1]), 36); rg.addColorStop(0, "rgba(140,255,240,.6)"); rg.addColorStop(1, "rgba(46,230,200,0)");
+  g.fillStyle = rg; g.fillRect(xa - 36, y(L[1]) - 36, 72, 72);
+  g.strokeStyle = C.teal; g.setLineDash([4, 4]); g.beginPath(); g.moveTo(xa, y(L[1])); g.lineTo(xb, y(L[4])); g.moveTo(xa, y(L[1])); g.lineTo(xb, y(L[3])); g.stroke(); g.setLineDash([]);
+  g.save(); g.shadowColor = C.gold; g.shadowBlur = 12; g.strokeStyle = C.gold; g.lineWidth = 2.2; g.beginPath(); g.moveTo(xa, y(L[1])); g.lineTo(xb, y(L[2])); g.stroke(); g.restore();
+  tag(g, W - pad.r + 2, y(L[4]), fmt(L[4]), C.teal, "#05080d"); tag(g, W - pad.r + 2, y(L[2]), fmt(L[2]), C.gold, "#05080d");
+  tag(g, W - pad.r + 2, y(L[3]), fmt(L[3]), C.red, "#05080d"); tag(g, W - pad.r + 2, y(L[5]), fmt(L[5]), "#1f3140", C.white);
+  // dates
+  g.fillStyle = C.mute; g.textBaseline = "alphabetic"; const n = Math.max(2, Math.floor(W / 160));
+  for (let i = 0; i <= n; i++) { const ts = t0 + ((t1 - t0) * i) / n; const tx = day(ts).slice(5); g.fillText(tx, Math.min(W - pad.r - 30, x(ts)), H - 6); }
+  // hover
+  if (S.hover && S.hover.cv === "hero") {
+    const hx = S.hover.x; const r = s.reduce((a, b) => (Math.abs(x(b[0] + step / 2) - hx) < Math.abs(x(a[0] + step / 2) - hx) ? b : a));
+    g.strokeStyle = "#2a3e50"; g.beginPath(); g.moveTo(x(r[0]), pad.t); g.lineTo(x(r[0]), H - pad.b); g.stroke();
+    const tip = $("tip"); tip.style.display = "block";
+    tip.innerHTML = `<b>${day(r[0])}</b><br>precio al pronosticar ${fmt(r[1])}<br><span style="color:${C.gold}">mediana ${fmt(r[2])}</span><br>banda ${fmt(r[3])} – ${fmt(r[4])}<br>P(sube) ${pct(r[7], 0)}<br>real ${fmt(r[5])} <b style="color:${r[6] ? C.green : C.red}">${r[6] ? "ACIERTO" : "FALLO"}</b>`;
+    tip.style.left = Math.min(W - 220, hx + 14) + "px"; tip.style.top = Math.max(40, S.hover.y - 50) + "px";
+  } else $("tip").style.display = "none";
+}
+function tag(g, px, py, txt, bg, fg) { const w = g.measureText(txt).width + 10; g.fillStyle = bg; g.fillRect(px, py - 8, w, 16); g.fillStyle = fg; g.textBaseline = "middle"; g.fillText(txt, px + 5, py); }
+function nice(lo, hi, n) { const raw = (hi - lo) / n, mag = Math.pow(10, Math.floor(Math.log10(raw))); const st = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((v) => v >= raw);
+  const o = []; for (let v = Math.ceil(lo / st) * st; v <= hi; v += st) o.push(v); return o; }
+
+// ---- cumulative hit-rate with CI band
+function frame(g, W, H, pad, yv, ylab) {
+  g.textBaseline = "middle"; yv.forEach(([v, y]) => { g.strokeStyle = C.grid; g.setLineDash(v === 0.5 ? [4, 4] : []); g.strokeStyle = v === 0.5 ? C.gold + "99" : C.grid;
+    g.beginPath(); g.moveTo(pad.l, y); g.lineTo(W - pad.r, y); g.stroke(); g.fillStyle = C.mute; g.fillText(ylab(v), 2, y); }); g.setLineDash([]);
+}
+function cum(t) {
+  const [g, W, H] = setup($("cum")); const pad = { l: 34, r: 56, t: 10, b: 18 };
+  const es = Object.entries(t.engines || {}).filter(([, m]) => m.curve && m.curve.length);
+  if (!es.length) { g.fillStyle = C.mute; g.fillText("sin rondas todavía", pad.l, H / 2); return; }
+  const maxX = Math.max(t.total || 1, ...es.map(([, m]) => m.curve[m.curve.length - 1][0]));
+  const x = (v) => pad.l + (v / maxX) * (W - pad.l - pad.r), y = (v) => pad.t + (1 - (Math.max(0.2, Math.min(0.8, v)) - 0.2) / 0.6) * (H - pad.t - pad.b);
+  frame(g, W, H, pad, [0.3, 0.4, 0.5, 0.6, 0.7].map((v) => [v, y(v)]), (v) => v * 100 + "%");
+  es.forEach(([e, m]) => { const col = e === "bootstrap" ? C.mute : C.teal;
+    if (e !== "bootstrap") { g.beginPath(); m.curve.forEach((p, i) => (i ? g.lineTo(x(p[0]), y(p[3])) : g.moveTo(x(p[0]), y(p[3]))));
+      for (let i = m.curve.length - 1; i >= 0; i--) g.lineTo(x(m.curve[i][0]), y(m.curve[i][2])); g.closePath(); g.fillStyle = "rgba(46,230,200,.12)"; g.fill(); }
+    g.save(); if (e !== "bootstrap") { g.shadowColor = C.teal; g.shadowBlur = 8; } g.strokeStyle = col; g.lineWidth = 2; g.beginPath();
+    m.curve.forEach((p, i) => (i ? g.lineTo(x(p[0]), y(p[1])) : g.moveTo(x(p[0]), y(p[1])))); g.stroke(); g.restore();
+    const L = m.curve[m.curve.length - 1]; g.fillStyle = col; g.fillText(`${pct(L[1], 0)} ${e === "bootstrap" ? "base" : "Kronos"}`, x(L[0]) + 4, y(L[1])); });
+}
+// ---- calibration: predicted P(up) vs realised up-rate
+function cal(t) {
+  const [g, W, H] = setup($("cal")); const [, k] = kronosOf(t); const b = k.calibration || []; const pad = { l: 34, r: 12, t: 10, b: 22 };
+  const x = (v) => pad.l + v * (W - pad.l - pad.r), y = (v) => pad.t + (1 - v) * (H - pad.t - pad.b);
+  frame(g, W, H, pad, [0, 0.25, 0.5, 0.75, 1].map((v) => [v, y(v)]), (v) => v * 100 + "%");
+  g.strokeStyle = C.mute; g.setLineDash([3, 3]); g.beginPath(); g.moveTo(x(0), y(0)); g.lineTo(x(1), y(1)); g.stroke(); g.setLineDash([]);
+  [0, 0.2, 0.4, 0.6, 0.8, 1].forEach((v) => { g.fillStyle = C.mute; g.textBaseline = "alphabetic"; g.fillText(v * 100 + "%", x(v) - 10, H - 6); });
+  if (!b.length) { g.fillStyle = C.mute; g.fillText("aparece con el registro detallado", pad.l + 10, H / 2); return; }
+  const maxN = Math.max(...b.map((r) => r[2]));
+  b.forEach(([c, real, n, pred]) => { const w = (W - pad.l - pad.r) * 0.16, h = (n / maxN) * 40;
+    g.fillStyle = "rgba(46,230,200,.18)"; g.fillRect(x(c) - w / 2, H - pad.b - h, w, h);
+    g.save(); g.shadowColor = C.gold; g.shadowBlur = 10; g.fillStyle = C.gold; g.beginPath(); g.arc(x(pred), y(real), 5, 0, 7); g.fill(); g.restore();
+    g.fillStyle = C.white; g.textBaseline = "middle"; g.fillText(`${pct(real, 0)} (n ${n})`, x(pred) + 8, y(real)); });
+}
+// ---- rolling hit-rate
+function roll(t) {
+  const [g, W, H] = setup($("roll")); const [, k] = kronosOf(t); const r = k.rolling || []; const pad = { l: 34, r: 12, t: 10, b: 18 };
+  const y = (v) => pad.t + (1 - (Math.max(0.2, Math.min(0.8, v)) - 0.2) / 0.6) * (H - pad.t - pad.b);
+  frame(g, W, H, pad, [0.3, 0.4, 0.5, 0.6, 0.7].map((v) => [v, y(v)]), (v) => v * 100 + "%");
+  if (r.length < 2) { g.fillStyle = C.mute; g.fillText("necesita al menos 50 rondas con registro detallado", pad.l + 6, H / 2); return; }
+  const maxX = r[r.length - 1][0], minX = r[0][0], x = (v) => pad.l + ((v - minX) / Math.max(1, maxX - minX)) * (W - pad.l - pad.r);
+  const grd = g.createLinearGradient(0, pad.t, 0, H - pad.b); grd.addColorStop(0, "rgba(46,230,200,.35)"); grd.addColorStop(1, "rgba(46,230,200,0)");
+  g.beginPath(); g.moveTo(x(r[0][0]), y(0.5)); r.forEach((p) => g.lineTo(x(p[0]), y(p[1]))); g.lineTo(x(maxX), y(0.5)); g.closePath(); g.fillStyle = grd; g.fill();
+  g.save(); g.shadowColor = C.teal; g.shadowBlur = 8; g.strokeStyle = C.teal; g.lineWidth = 2; g.beginPath(); r.forEach((p, i) => (i ? g.lineTo(x(p[0]), y(p[1])) : g.moveTo(x(p[0]), y(p[1])))); g.stroke(); g.restore();
+}
+
+$("hero").addEventListener("mousemove", (e) => { const b = e.target.getBoundingClientRect(); S.hover = { cv: "hero", x: e.clientX - b.left, y: e.clientY - b.top }; drawAll(); });
+$("hero").addEventListener("mouseleave", () => { S.hover = null; drawAll(); });
+window.addEventListener("resize", drawAll);
 tick(); setInterval(tick, 5000);
 </script>
 </body>

@@ -46,7 +46,13 @@ def run(df: pd.DataFrame, engines: dict, horizon: int, rounds: int, step: int, c
             sc = analytics.score(paths[..., 3], last, fut)
             sc["seconds"] = time.time() - t0
             res[name].append(sc)
-            compact.append([j, name, int(sc["direction_hit"]), round(sc["coverage"], 4), round(sc["crps_skill"], 4)])
+            pc = paths[:, -1, 3]
+            p10, p50, p90 = (float(v) for v in np.percentile(pc, [10, 50, 90]))
+            # [round, engine, hit, coverage, crps_skill, anchor_ts, last, median, p10, p90, actual, P(up)]
+            compact.append([j, name, int(sc["direction_hit"]), round(sc["coverage"], 4), round(sc["crps_skill"], 4),
+                            int(hist["timestamps"].iloc[-1].timestamp()), round(last, 6), round(p50, 6),
+                            round(p10, 6), round(p90, 6), round(float(fut[-1]), 6),
+                            round(float((pc > last).mean()), 3)])
             if records is not None:
                 summ = analytics.summarize(paths, hist["close"].to_numpy())
                 records.append({"engine": name, "anchor": str(hist["timestamps"].iloc[-1]), "last_close": last,
