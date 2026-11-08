@@ -7,7 +7,8 @@
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/style.css">
 <style>
-  .bt { width: 100%; max-width: 1600px; margin: 0 auto; padding: 14px 16px; display: grid; gap: 12px;
+  html, body { overflow-x: hidden; }
+  .bt { width: 100%; max-width: none; margin: 0; padding: 14px max(16px, 1.2vw); display: grid; gap: 12px;
         grid-template-columns: minmax(0, 1fr); box-sizing: border-box; }
   .tabs { max-width: 100%; }
   .bt > *, .bt .card, .row2 > *, .row3 > *, .kpis > * { min-width: 0; }
