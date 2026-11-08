@@ -253,12 +253,13 @@ function trading() {
   if (!doc) { $("trTbl").innerHTML = head + `<tr><td colspan=7 class="muted">Se calcula al terminar las pruebas de dirección (paso final del script).</td></tr>`; equity($("eq"), [], "sin datos de trading todavía"); return; }
   const series = [], rows = [];
   Object.entries(doc.engines).forEach(([e, vs], ei) => Object.entries(vs).forEach(([v, m], vi) => {
-    if (v === "_buyhold") return;
+    if (v.startsWith("_")) return;
     const kron = e !== "bootstrap"; const best = v === "fuertes+tendencia+stop";
     if (kron || best) series.push({ name: `${kron ? e.replace("kronos-", "") : "base"} ${v.replace("fuertes", "fuert.").replace("tendencia", "tend.")}`, curve: m.curve,
       color: kron ? PAL[vi % PAL.length] : "#5f7385", glow: kron && best, width: kron && best ? 2.4 : 1.4, dash: kron ? [] : [3, 3] });
     rows.push(metricRow(`${engName(e)} · ${v}`, m)); }));
   const bh = Object.values(doc.engines)[0]._buyhold; if (bh) { series.push({ name: "buy & hold", curve: bh.curve, color: C.white, width: 1.4, dash: [6, 4] }); rows.push(metricRow("buy & hold", bh)); }
+  const tr = Object.values(doc.engines)[0]._tendencia; if (tr) { series.push({ name: "solo tendencia", curve: tr.curve, color: "#ff8a5c", width: 1.6, dash: [2, 3] }); rows.push(metricRow("solo tendencia (control)", tr)); }
   $("trTbl").innerHTML = head + rows.join(""); equity($("eq"), series, "");
 }
 function xsec() {

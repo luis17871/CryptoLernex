@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from contextlib import asynccontextmanager
 
 import pandas as pd
@@ -17,6 +18,25 @@ from .service import Lab
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 lab = Lab(settings)
+
+
+PAPER_ON = os.environ.get("KRONOS_PAPER", "0") == "1"
+
+
+async def paper_loop() -> None:
+    """Paper trading: one step per day, shortly after the daily candle closes (00:10 UTC)."""
+    from . import paper
+    while True:
+        try:
+            st = paper.state()
+            today = pd.Timestamp.now("UTC").floor("D") - pd.Timedelta(days=1)
+            done = all(v.get("last_day") == str(today)[:10] for v in st.get("symbols", {}).values()) and st.get("symbols")
+            if not done and pd.Timestamp.now("UTC").hour * 60 + pd.Timestamp.now("UTC").minute >= 10:
+                await asyncio.to_thread(paper.step)
+                lab.events.emit("paper", "paper trading step done")
+        except Exception as e:  # noqa: BLE001
+            lab.events.emit("paper", f"{type(e).__name__}: {e}", "error")
+        await asyncio.sleep(600)
 
 
 async def scheduler() -> None:
@@ -39,8 +59,11 @@ async def lifespan(_: FastAPI):
     lab.events.loop = asyncio.get_running_loop()
     await asyncio.to_thread(lab.load)
     task = asyncio.create_task(scheduler())
+    ptask = asyncio.create_task(paper_loop()) if PAPER_ON else None
     yield
     task.cancel()
+    if ptask:
+        ptask.cancel()
 
 
 app = FastAPI(title="Kronos Lab", lifespan=lifespan)
@@ -164,3 +187,14 @@ def backtests_page():
 def backtests_api():
     from .monitor import collect
     return collect()
+
+
+@app.get("/paper")
+def paper_page():
+    return FileResponse(ROOT / "web" / "paper.html")
+
+
+@app.get("/api/paper")
+def paper_api():
+    from . import paper
+    return paper.state()

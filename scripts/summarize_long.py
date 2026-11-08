@@ -26,10 +26,21 @@ for f in sorted(d.glob("trade_*.json")):
     best = sorted(((e, v, m) for e, s in doc["engines"].items() for v, m in s.items() if not v.startswith("_")),
                   key=lambda x: -x[2]["sharpe"])[:2]
     bh = next(iter(doc["engines"].values())).get("_buyhold", {})
-    print(f"TRADE {doc['test']:<22} B&H {bh.get('total_return', 0):+.1%} | " +
+    tr = next(iter(doc["engines"].values())).get("_tendencia", {})
+    print(f"TRADE {doc['test']:<22} B&H {bh.get('total_return', 0):+.1%} tend {tr.get('total_return', 0):+.1%} "
+          f"(Sh {tr.get('sharpe', 0):.2f} DD {tr.get('max_dd', 0):.0%}) | " +
           " | ".join(f"{e}/{v} {m['total_return']:+.1%} Sh {m['sharpe']:.2f} DD {m['max_dd']:.0%} n{m['trades']}" for e, v, m in best))
 x = d / "xsec.json"
 if x.exists():
     doc = json.loads(x.read_text(encoding="utf-8-sig"))
     for n, m in doc["strategies"].items():
         print(f"XSEC  {n:<14} {m['total_return']:+.1%} Sharpe {m['sharpe']:.2f} DD {m['max_dd']:.0%} IC {m['ic_mean']:+.3f} t {m['ic_tstat']:.2f}")
+
+# pooled LightGBM validation across coins (one binomial test over every independent round)
+import math
+rows = [json.loads(f.read_text(encoding="utf-8-sig")) for f in sorted(d.glob("lgbm_*_d5.json"))]
+if rows:
+    k = sum(r["lightgbm"]["hits"] for r in rows if "lightgbm" in r)
+    n = sum(r["lightgbm"]["rounds"] for r in rows if "lightgbm" in r)
+    z = (k - n / 2) / math.sqrt(n / 4) if n else 0
+    print(f"POOLED lightgbm d5: {k}/{n} = {k / n:.1%} across {len(rows)} coins, z = {z:.2f} (z > 2 = edge beyond luck)")

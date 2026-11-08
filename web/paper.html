@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kronos Paper Trading</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  html, body { overflow-x: hidden; }
+  .pp { width: 100%; padding: 14px max(16px, 1.2vw); display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); box-sizing: border-box; }
+  .pp .card { min-width: 0; }
+  .syms { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr)); }
+  .head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .head h2 { margin: 0; font-size: 16px; color: var(--white); letter-spacing: .06em; }
+  .sig { padding: 4px 12px; border-radius: 4px; font-weight: 700; letter-spacing: .08em; border: 1px solid; font-size: 12px; }
+  .sig.long { color: var(--green); border-color: var(--green); } .sig.short { color: var(--red); border-color: var(--red); }
+  .sig.flat { color: var(--gold); border-color: var(--gold); }
+  .k3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .k3 .lbl { margin: 0; } .k3 b { display: block; font-size: 22px; margin-top: 2px; }
+  canvas.eq { width: 100%; height: 220px; display: block; }
+  .tbl { overflow-x: auto; } .tbl table { min-width: 640px; }
+  .up { color: var(--teal); } .dn { color: var(--red); } .muted { color: var(--mute); }
+  .err { color: var(--red); font-size: 11px; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="dots"><i></i><i></i><i></i></span><b>KRONOS</b>&nbsp;PAPER TRADING</div>
+  <span class="chip live"><i class="pulse"></i><span id="liveTxt">live</span></span>
+  <span class="chip" id="upd">-</span>
+  <div class="spacer"></div>
+  <a class="small" href="/">panel en vivo</a>
+</header>
+<div class="pp">
+  <p class="small">Dinero simulado. Cada día después del cierre (00:10 UTC) LightGBM se reentrena con funding, prima de futuros y flujo comprador; solo opera con señal fuerte (P ≥ 65 % o ≤ 35 %) a favor de la tendencia (media de 50 días), 5 días por operación, stop de 1,5 σ, comisiones 0,14 %. Controles: solo tendencia y buy &amp; hold.</p>
+  <section class="syms" id="syms"><div class="card muted">Esperando el primer cálculo diario (se ejecuta al arrancar y luego cada día a las 00:10 UTC).</div></section>
+  <section class="card"><div class="lbl">OPERACIONES CERRADAS</div><div class="tbl"><table id="trades"></table></div></section>
+</div>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const pct = (v, d = 1) => (v == null || isNaN(v) ? "-" : (v * 100).toFixed(d) + "%");
+const spct = (v) => (v == null ? "-" : (v > 0 ? "+" : "") + (v * 100).toFixed(2) + "%");
+const fmt = (v) => (v == null ? "-" : v.toLocaleString("en-US", { maximumFractionDigits: v >= 100 ? 0 : 3 }));
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+async function tick() {
+  try { const r = await fetch("/api/paper"); render(await r.json()); $("liveTxt").textContent = "live"; }
+  catch (e) { $("liveTxt").textContent = "sin conexión"; }
+}
+function render(st) {
+  const S = st.symbols || {}; const names = Object.keys(S);
+  $("upd").textContent = st.updated ? "actualizado " + new Date(st.updated * 1000).toISOString().slice(0, 16).replace("T", " ") + " UTC" : "sin datos";
+  if (!names.length) return;
+  $("syms").innerHTML = names.map((n) => { const s = S[n]; const pos = s.position;
+    const cls = pos ? (pos.side > 0 ? "long" : "short") : "flat";
+    return `<div class="card" data-s="${esc(n)}"><div class="head"><h2>${esc(n.replace("USDT", ""))}</h2><span class="sig ${cls}">${esc((s.signal || "-").toUpperCase())}</span></div>
+      ${s.error ? `<div class="err">${esc(s.error)}</div>` : ""}
+      <div class="small" style="margin:6px 0">día ${esc(s.last_day || "-")} · cierre ${fmt(s.prev_close)} · P(sube 5 días) <b>${pct(s.p_up, 0)}</b> · tendencia ${s.trend > 0 ? '<span class="up">alcista</span>' : '<span class="dn">bajista</span>'}
+      ${pos ? ` · posición desde ${esc(pos.date)} a ${fmt(pos.entry)}, stop ${fmt(pos.stop)}, día ${pos.days}/5` : ""}</div>
+      <div class="k3"><div><div class="lbl">ESTRATEGIA</div><b class="${s.equity >= 1 ? "up" : "dn"}">${spct((s.equity || 1) - 1)}</b></div>
+        <div><div class="lbl">SOLO TENDENCIA</div><b>${spct((s.trend_equity || 1) - 1)}</b></div>
+        <div><div class="lbl">BUY &amp; HOLD</div><b>${spct((s.bh_equity || 1) - 1)}</b></div></div>
+      <canvas class="eq"></canvas>
+      <div class="small muted">variables con más peso hoy: ${esc((s.top_features || []).join(", "))}</div></div>`; }).join("");
+  names.forEach((n) => chart(document.querySelector(`[data-s="${CSS.escape(n)}"] canvas`), S[n].history || []));
+  const T = names.flatMap((n) => S[n].trades || []).sort((a, b) => (a.close < b.close ? 1 : -1));
+  $("trades").innerHTML = "<tr><th>moneda</th><th>lado</th><th>apertura</th><th>cierre</th><th>entrada</th><th>salida</th><th>P(sube)</th><th>motivo</th><th>resultado</th></tr>" +
+    (T.length ? T.map((t) => `<tr><td>${esc(t.symbol.replace("USDT", ""))}</td><td>${t.side > 0 ? "largo" : "corto"}</td><td>${esc(t.open)}</td><td>${esc(t.close)}</td>
+      <td>${fmt(t.entry)}</td><td>${fmt(t.exit)}</td><td>${pct(t.p_up, 0)}</td><td>${esc(t.reason)}</td><td class="${t.ret > 0 ? "up" : "dn"}">${spct(t.ret)}</td></tr>`).join("")
+      : `<tr><td colspan=9 class="muted">Todavía no hay operaciones cerradas.</td></tr>`);
+}
+function chart(cv, h) {
+  if (!cv) return; const dpr = devicePixelRatio || 1, W = cv.clientWidth, H = 220; cv.width = W * dpr; cv.height = H * dpr;
+  const g = cv.getContext("2d"); g.scale(dpr, dpr); g.font = "10px JetBrains Mono, monospace";
+  if (h.length < 2) { g.fillStyle = "#5f7385"; g.fillText("la curva aparece desde el segundo día", 10, H / 2); return; }
+  const keys = [["equity", "#2ee6c8", "estrategia", 2.4], ["trend_equity", "#ff8a5c", "tendencia", 1.6], ["bh_equity", "#eef5fb", "buy & hold", 1.4]];
+  const vals = h.flatMap((r) => keys.map((k) => r[k[0]])); const lo = Math.min(...vals, 1) * 0.995, hi = Math.max(...vals, 1) * 1.005;
+  const pad = { l: 46, r: 90, t: 8, b: 18 }; const x = (i) => pad.l + (i / (h.length - 1)) * (W - pad.l - pad.r), y = (v) => pad.t + (1 - (v - lo) / (hi - lo)) * (H - pad.t - pad.b);
+  g.strokeStyle = "#ffc24a88"; g.setLineDash([4, 4]); g.beginPath(); g.moveTo(pad.l, y(1)); g.lineTo(W - pad.r, y(1)); g.stroke(); g.setLineDash([]);
+  g.fillStyle = "#5f7385"; g.fillText("0%", 6, y(1) + 3); g.fillText(h[0].day, pad.l, H - 4); g.fillText(h[h.length - 1].day, W - pad.r - 70, H - 4);
+  keys.forEach(([k, c, name, w]) => { g.strokeStyle = c; g.lineWidth = w; g.beginPath(); h.forEach((r, i) => (i ? g.lineTo(x(i), y(r[k])) : g.moveTo(x(i), y(r[k])))); g.stroke();
+    const L = h[h.length - 1][k]; g.fillStyle = c; g.fillText(`${((L - 1) * 100).toFixed(1)}% ${name}`, W - pad.r + 4, y(L) + 3); });
+}
+tick(); setInterval(tick, 60000); window.addEventListener("resize", tick);
+</script>
+</body>
+</html>

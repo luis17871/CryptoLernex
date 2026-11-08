@@ -99,7 +99,7 @@ def simulate(rounds: pd.DataFrame, bars: pd.DataFrame, horizon: int, sec: int, c
     sma_n, vol_n = 50 * per_day, 30 * per_day
     pos = {int(t): i for i, t in enumerate(ts)}
     out = {k: [] for k in ("todas", "fuertes", "fuertes+tendencia", "fuertes+tendencia+stop")}
-    bh, stamps = [], []
+    bh, trend_only, stamps = [], [], []
     for r in rounds.itertuples(index=False):
         a = int(pd.Timestamp(r.anchor).timestamp())
         i = pos.get(a)
@@ -128,10 +128,13 @@ def simulate(rounds: pd.DataFrame, bars: pd.DataFrame, horizon: int, sec: int, c
         out["fuertes+tendencia"].append(plain if ok else 0.0)
         out["fuertes+tendencia+stop"].append(stopped if ok else 0.0)
         bh.append(final / entry - 1)
+        trend_only.append((final / entry - 1) - cost if trend > 0 else 0.0)
         stamps.append(a)
     ppy = 365 * 86400 / (horizon * sec)
     res = {k: perf(np.array(v), ppy) | {"curve": _curve(stamps, v)} for k, v in out.items() if v}
     res["_buyhold"] = perf(np.array(bh), ppy) | {"curve": _curve(stamps, bh)} if bh else {}
+    if trend_only:
+        res["_tendencia"] = perf(np.array(trend_only), ppy) | {"curve": _curve(stamps, trend_only)}
     return res
 
 
@@ -361,6 +364,9 @@ def cmd_deriv(a) -> None:
             if not rows:
                 continue
             name = f"lgbm_{symbol.replace('USDT', '')}_d{h}"
+            if (OUT / f"{name}.json").exists() and not a.force:
+                print(f"{name}: exists, skipped")
+                continue
             df = pd.DataFrame(rows + mom_rows)
             df.to_csv(OUT / f"{name}.csv", index=False)
             out = {}
@@ -392,6 +398,7 @@ def main() -> None:
     ap.add_argument("--samples", type=int, default=30)
     ap.add_argument("--device", default="")
     ap.add_argument("--symbols", default="BTCUSDT,SOLUSDT")
+    ap.add_argument("--force", action="store_true", help="recompute even if the result exists")
     ap.add_argument("--horizons", default="5,10")
     a = ap.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
