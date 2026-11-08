@@ -5,3 +5,5 @@ data/
 weights/
 .venv/
 *.log
+*.progress.json
+*.progress.json.tmp
