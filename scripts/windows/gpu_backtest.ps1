@@ -81,7 +81,7 @@ foreach ($t in $Tests) {
     if (Test-Path $json) { Write-Host "skip $($t.n) (done)"; continue }
     Write-Host "-- $($t.n)" -ForegroundColor Yellow
     & $VPy -m app.backtest --symbol $t.s --interval 1h --model $t.m --weights-dir "weights\$($t.m)" `
-        --horizon $t.h --step $t.h --rounds $t.r --samples $t.k --device cuda:0 `
+        --horizon $t.h --step $t.h --rounds $t.r --samples $t.k --device cuda:0 --end 2026-11-08T00:00Z `
         --json $json --csv "$Out\$($t.n).csv"
     if ($LASTEXITCODE -ne 0) {
         Write-Host "test $($t.n) failed, continuing" -ForegroundColor Red

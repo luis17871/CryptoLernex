@@ -123,7 +123,7 @@ const vClass = (v) => (v === "ventaja" ? "ventaja" : v === "peor que azar" ? "pe
 const engName = (e) => (e === "bootstrap" ? "modelo base" : e);
 const day = (ts) => new Date(ts * 1000).toISOString().slice(0, 10);
 const label = (t) => { const m = t.meta || {}, p = t.plan || {}; const s = (m.symbol || p.symbol || "").replace("USDT", "");
-  const mod = (m.model || p.model || "").replace("kronos-", ""); const h = m.horizon || p.horizon; return s ? `${s} · ${mod} · ${h} h` : t.name; };
+  const mod = (m.model || p.model || t.name.split("_")[0] || "").replace("kronos-", ""); const h = m.horizon || p.horizon; return s ? `${s} · ${mod} · ${h} h` : t.name; };
 let S = { data: null, sel: null, hover: null };
 try { S.sel = localStorage.getItem("bt.sel"); } catch (e) {}
 

@@ -18,7 +18,7 @@ import pandas as pd
 from . import analytics
 from .config import INTERVALS, settings
 from .data import MarketData
-from .engine import BootstrapEngine, KronosEngine
+from .engine import BootstrapEngine, make_engine
 
 
 def run(df: pd.DataFrame, engines: dict, horizon: int, rounds: int, step: int, context: int, samples: int,
@@ -100,6 +100,7 @@ def main() -> None:
     ap.add_argument("--step", type=int, default=12)
     ap.add_argument("--baseline-only", action="store_true")
     ap.add_argument("--device", default=settings.device, help="cuda:0, cpu, mps (default: auto)")
+    ap.add_argument("--end", help="last candle to use, ISO UTC (e.g. 2026-11-08T00:00Z): same window for every model")
     ap.add_argument("--json", help="write aggregate results to this file")
     ap.add_argument("--csv", help="write one row per engine and round to this file")
     ap.add_argument("--progress", help="live progress JSON for the monitor (default: <json>.progress.json)")
@@ -107,13 +108,15 @@ def main() -> None:
 
     engines: dict = {}
     if not a.baseline_only:
-        k = KronosEngine(a.model, a.weights_dir, a.device, settings.batch_size)
+        k = make_engine(a.model, a.weights_dir, a.device, settings.batch_size, a.context)
         print(f"model {a.model} on {k.device}")
         engines[k.name] = k
         a.context = min(a.context, k.max_context)
     engines["bootstrap"] = BootstrapEngine()
     need = a.context + a.horizon + a.rounds * a.step + 5
-    df = MarketData(a.source).candles(a.symbol, a.interval, need)
+    end_ms = int(pd.Timestamp(a.end).tz_localize("UTC").timestamp() * 1000) if a.end and pd.Timestamp(a.end).tzinfo is None \
+        else int(pd.Timestamp(a.end).timestamp() * 1000) if a.end else None
+    df = MarketData(a.source).candles(a.symbol, a.interval, need, end_ms)
     print(f"{len(df)} candles {a.symbol} {a.interval}: {df.timestamps.iloc[0]} -> {df.timestamps.iloc[-1]}")
     recs: list = []
     prog = a.progress or (a.json[:-5] + ".progress.json" if a.json and a.json.endswith(".json") else None)

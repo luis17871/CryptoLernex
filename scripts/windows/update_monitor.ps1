@@ -10,6 +10,14 @@ if (Test-Path $Tmp) { Remove-Item $Tmp -Recurse -Force }
 Expand-Archive $Zip $Tmp
 $Src = (Get-ChildItem $Tmp | Select-Object -First 1).FullName
 foreach ($p in "app", "web", "scripts") { Copy-Item (Join-Path $Src $p) $Dir -Recurse -Force }
+# results computed elsewhere (Chronos-2, TimesFM-2.5): add them without touching local Kronos files
+$RepoRes = Join-Path $Src "results\backtest\long"
+$LocalRes = Join-Path $Dir "results\backtest\long"
+New-Item -ItemType Directory -Force $LocalRes | Out-Null
+if (Test-Path $RepoRes) {
+    Get-ChildItem $RepoRes -File | Where-Object { $_.Name -notlike "plan.json" -and $_.Name -notlike "*.log" } |
+        ForEach-Object { $dst = Join-Path $LocalRes $_.Name; if (-not (Test-Path $dst)) { Copy-Item $_.FullName $dst } }
+}
 # restart only the monitor (port 8020); running tests keep going and the next ones use the new code
 Get-NetTCPConnection -LocalPort 8020 -State Listen -ErrorAction SilentlyContinue |
     ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }

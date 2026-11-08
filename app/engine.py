@@ -152,6 +152,102 @@ class BootstrapEngine:
         return _sanitize(np.stack([open_, high, low, close, vol, amount], axis=-1))
 
 
+# ---------------------------------------------------------------- Quantile models (Chronos-2, TimesFM-2.5)
+class _QuantileEngine:
+    """Base for models that forecast quantiles of the close instead of sampling paths.
+
+    Paths are built comonotonically: path i takes the same quantile level u_i at every step
+    (u_i spread evenly over 0..1), interpolating between the model's quantile levels. That keeps
+    every per-step distribution exactly as the model predicts it, which is what the scores use.
+    """
+
+    name = "quantile"
+    levels: list[float] = []
+    max_context = 512
+
+    def _quantiles(self, close: np.ndarray, H: int) -> np.ndarray:  # -> (H, len(levels))
+        raise NotImplementedError
+
+    def sample(self, df, y_timestamps, n_paths, temperature=1.0, top_p=0.9, seed=None):
+        close = df["close"].to_numpy(np.float64)[-self.max_context:]
+        H = len(y_timestamps)
+        q = np.sort(self._quantiles(close, H), axis=1)  # guard against quantile crossing
+        lv = np.asarray(self.levels)
+        u = (np.arange(n_paths) + 0.5) / n_paths
+        paths_close = np.empty((n_paths, H))
+        for h in range(H):
+            qs = q[h]
+            # linear extrapolation beyond the outer levels, from the two nearest levels
+            lo_slope = (qs[1] - qs[0]) / (lv[1] - lv[0])
+            hi_slope = (qs[-1] - qs[-2]) / (lv[-1] - lv[-2])
+            v = np.interp(u, lv, qs)
+            v = np.where(u < lv[0], qs[0] - (lv[0] - u) * lo_slope, v)
+            v = np.where(u > lv[-1], qs[-1] + (u - lv[-1]) * hi_slope, v)
+            paths_close[:, h] = v
+        paths_close = np.maximum(paths_close, 1e-9)
+        last = close[-1]
+        open_ = np.concatenate([np.full((n_paths, 1), last), paths_close[:, :-1]], axis=1)
+        high, low = np.maximum(open_, paths_close), np.minimum(open_, paths_close)
+        vol = np.full_like(paths_close, float(df["volume"].tail(50).mean()))
+        amount = vol * (open_ + high + low + paths_close) / 4
+        return _sanitize(np.stack([open_, high, low, paths_close, vol, amount], axis=-1))
+
+
+class Chronos2Engine(_QuantileEngine):
+    name = "chronos-2"
+    levels = [0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99]
+
+    def __init__(self, repo: str = "amazon/chronos-2", device: str = "", context: int = 512):
+        import torch
+        from chronos import BaseChronosPipeline
+
+        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        self.pipe = BaseChronosPipeline.from_pretrained(repo, device_map=self.device)
+        self.repo, self.max_context = repo, context
+
+    def info(self) -> dict:
+        return {"engine": "chronos-2", "model": "chronos-2", "repo": self.repo, "tokenizer": "-", "params": "120M",
+                "max_context": self.max_context, "device": self.device}
+
+    def _quantiles(self, close, H):
+        q, _ = self.pipe.predict_quantiles([close.astype(np.float32)], prediction_length=H, quantile_levels=self.levels)
+        a = q[0].detach().cpu().numpy() if hasattr(q[0], "detach") else np.asarray(q[0])
+        return a.reshape(-1, H, len(self.levels))[0]  # (variates, H, Q) -> (H, Q)
+
+
+class TimesFMEngine(_QuantileEngine):
+    name = "timesfm-2.5"
+    levels = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+
+    def __init__(self, repo: str = "google/timesfm-2.5-200m-pytorch", context: int = 512, max_horizon: int = 256):
+        import timesfm
+
+        self.model = timesfm.TimesFM_2p5_200M_torch.from_pretrained(repo)
+        self.model.compile(timesfm.ForecastConfig(max_context=context, max_horizon=max_horizon, normalize_inputs=True,
+                                                  use_continuous_quantile_head=True, fix_quantile_crossing=True))
+        self.repo, self.max_context = repo, context
+        self.device = str(getattr(self.model.model, "device", "cpu"))
+
+    def info(self) -> dict:
+        return {"engine": "timesfm-2.5", "model": "timesfm-2.5", "repo": self.repo, "tokenizer": "-", "params": "200M",
+                "max_context": self.max_context, "device": self.device}
+
+    def _quantiles(self, close, H):
+        _, q = self.model.forecast(horizon=H, inputs=[close.astype(np.float32)])
+        return np.asarray(q)[0, :H, 1:10]  # column 0 is the mean, then deciles 0.1..0.9
+
+
+def make_engine(key: str, weights_dir: str = "", device: str = "", batch_size: int = 50, context: int = 512):
+    """Engine factory for the backtest and the lab: kronos-*, chronos-2, timesfm-2.5 or bootstrap."""
+    if key == "bootstrap":
+        return BootstrapEngine()
+    if key == "chronos-2":
+        return Chronos2Engine(weights_dir or "amazon/chronos-2", device, context)
+    if key == "timesfm-2.5":
+        return TimesFMEngine(weights_dir or "google/timesfm-2.5-200m-pytorch", context)
+    return KronosEngine(key, weights_dir, device, batch_size)
+
+
 def _sanitize(p: np.ndarray) -> np.ndarray:
     """Enforce OHLC consistency (high >= max(o,c), low <= min(o,c), non-negative volume)."""
     o, h, l, c = p[..., 0], p[..., 1], p[..., 2], p[..., 3]

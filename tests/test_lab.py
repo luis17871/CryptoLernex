@@ -178,3 +178,23 @@ def test_monitor_collects_progress_and_results(tmp_path):
     assert out["t1"]["done"] == 20 and out["t1"]["engines"]["bootstrap"]["n"] == 20
     assert out["t1"]["engines"]["bootstrap"]["curve"][-1][0] == 20
     assert out["t2"]["status"] == "failed"
+
+
+def test_quantile_engine_builds_coherent_paths():
+    from app.engine import _QuantileEngine
+
+    class Fake(_QuantileEngine):
+        levels = [0.1, 0.5, 0.9]
+
+        def _quantiles(self, close, H):
+            base = close[-1]
+            return np.array([[base * (1 - 0.01 * (h + 1)), base, base * (1 + 0.01 * (h + 1))] for h in range(H)])
+
+    df = _df(200)
+    p = Fake().sample(df, _yts(df, 5), 101, 1.0, 1.0, 0)
+    c = p[..., 3]
+    assert p.shape == (101, 5, 6)
+    assert np.isclose(np.median(c[:, -1]), df.close.iloc[-1])
+    assert abs(np.mean(c[:, -1] > df.close.iloc[-1]) - 0.5) < 0.02
+    assert np.isclose(np.percentile(c[:, -1], 90), df.close.iloc[-1] * 1.05, rtol=2e-3)
+    assert (np.diff(c, axis=0) >= -1e-9).all()  # comonotonic: path order is the same at every step
