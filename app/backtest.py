@@ -49,7 +49,7 @@ def run(df: pd.DataFrame, engines: dict, horizon: int, rounds: int, step: int, c
                                 "prob_up": summ["prob_up"], "regime": summ["regime"], "actual": float(fut[-1]),
                                 **{k: sc[k] for k in ("coverage", "inside_final", "direction_hit", "crps_skill",
                                                       "skill", "seconds")}})
-        if progress:
+        if progress and ((j + 1) % max(1, len(anchors) // 40) == 0 or j + 1 == len(anchors)):
             line = " | ".join(f"{n}: dir {'HIT ' if r[-1]['direction_hit'] else 'miss'} cov {r[-1]['coverage']:.0%}"
                               for n, r in res.items())
             print(f"[{j + 1:>3}/{len(anchors)}] {hist['timestamps'].iloc[-1]:%Y-%m-%d %H:%M}  {line}", flush=True)
@@ -72,13 +72,15 @@ def main() -> None:
     ap.add_argument("--rounds", type=int, default=40)
     ap.add_argument("--step", type=int, default=12)
     ap.add_argument("--baseline-only", action="store_true")
+    ap.add_argument("--device", default=settings.device, help="cuda:0, cpu, mps (default: auto)")
     ap.add_argument("--json", help="write aggregate results to this file")
     ap.add_argument("--csv", help="write one row per engine and round to this file")
     a = ap.parse_args()
 
     engines: dict = {}
     if not a.baseline_only:
-        k = KronosEngine(a.model, a.weights_dir, settings.device, settings.batch_size)
+        k = KronosEngine(a.model, a.weights_dir, a.device, settings.batch_size)
+        print(f"model {a.model} on {k.device}")
         engines[k.name] = k
         a.context = min(a.context, k.max_context)
     engines["bootstrap"] = BootstrapEngine()
@@ -93,6 +95,19 @@ def main() -> None:
     for n, m in out.items():
         print(f"{n:<15} {m['rounds']:>6}  {m['hit_rate']:>8.1%}  {m['coverage']:>14.1%}  {m['crps_skill']:>10.1%}"
               f"  {m['skill']:>9.1%}  {m['avg_seconds']:>7.2f}")
+    independent = a.step >= a.horizon
+    print(f"\nsignificance ({'independent rounds' if independent else 'OVERLAPPING rounds: optimistic'}):")
+    for n in out:
+        hits = [r["direction_hit"] for r in recs if r["engine"] == n]
+        k_, n_ = int(sum(hits)), len(hits)
+        lo, hi = analytics.wilson(k_, n_)
+        pv = analytics.binom_p_greater(k_, n_)
+        verdict = "ventaja" if lo > 0.5 else "peor que azar" if hi < 0.5 else "no concluyente"
+        out[n] |= {"hits": k_, "ci_low": lo, "ci_high": hi, "p_value": pv, "verdict": verdict,
+                   "independent": independent}
+        print(f"{n:<15} {k_}/{n_} = {k_ / n_:.1%}  95% CI [{lo:.1%}, {hi:.1%}]  p={pv:.4f}  -> {verdict}")
+    out["_config"] = {k: v for k, v in vars(a).items() if k not in ("json", "csv", "weights_dir")} | {
+        "first": str(df.timestamps.iloc[0]), "last": str(df.timestamps.iloc[-1])}
     print("\nhit-rate > 50% = direction edge; coverage ~80% = honest uncertainty; skill > 0 = beats 'no change'.")
     if a.json:
         with open(a.json, "w") as f:
