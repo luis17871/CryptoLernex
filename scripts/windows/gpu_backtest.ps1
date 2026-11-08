@@ -42,7 +42,8 @@ Write-Host "== 3/5 Packages (PyTorch with CUDA, ~3 GB the first time)" -Foregrou
 if (-not (Test-Path ".venv")) { & $Py -m venv .venv }
 $VPy = Join-Path $Dir ".venv\Scripts\python.exe"
 & $VPy -m pip install -q -U pip
-& $VPy -m pip install -q torch --index-url https://download.pytorch.org/whl/cu126
+Write-Host "Downloading PyTorch CUDA (~2.5 GB). This can take a while on slow connections."
+& $VPy -m pip install torch --index-url https://download.pytorch.org/whl/cu126 --progress-bar on
 & $VPy -m pip install -q numpy pandas einops huggingface_hub safetensors tqdm httpx fastapi uvicorn
 & $VPy -c "import torch; ok=torch.cuda.is_available(); print('GPU:', torch.cuda.get_device_name(0) if ok else 'NOT AVAILABLE'); raise SystemExit(0 if ok else 3)"
 if ($LASTEXITCODE -ne 0) { throw "PyTorch does not see the GPU. Update the NVIDIA driver (GeForce Experience or nvidia.com) and run again." }
