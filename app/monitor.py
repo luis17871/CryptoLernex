@@ -91,7 +91,7 @@ def collect(d: Path = DIR) -> dict:
     names = [t["name"] for t in plan]
     for p in sorted(d.glob("*.json")):
         stem = p.name[:-len(".progress.json")] if p.name.endswith(".progress.json") else p.stem
-        if stem != "plan" and stem not in names:
+        if stem != "plan" and stem not in names and not stem.startswith(("trade_", "xsec")):
             names.append(stem)
     tests = []
     for name in names:
@@ -109,7 +109,7 @@ def collect(d: Path = DIR) -> dict:
             t.update({k: prog.get(k) for k in ("done", "total", "eta_s", "elapsed_s", "updated", "meta", "last_anchor")})
             t["done"] = t["done"] or 0
             t["meta"] = t["meta"] or {}
-            engines = sorted({r[1] for r in rounds}, key=lambda e: e == "bootstrap")
+            engines = sorted({r[1] for r in rounds}, key=lambda e: e == "bootstrap" or e.startswith("momentum"))
             t["engines"] = {e: _engine_stats(rounds, e) for e in engines}
             stale = time.time() - (prog.get("updated") or 0) > STALE_S
             t["status"] = "done" if prog.get("status") == "done" else "stopped" if stale else "running"
@@ -129,7 +129,14 @@ def collect(d: Path = DIR) -> dict:
         if failed and t["status"] != "done":
             t["status"] = "failed"
         tests.append(t)
-    return {"dir": str(d), "now": time.time(), "tests": tests}
+    trades = {}
+    for p in d.glob("trade_*.json"):
+        doc = _load(p)
+        if doc:
+            trades[doc.get("test", p.stem[6:])] = doc
+    xsec = _load(d / "xsec.json")
+    xprog = _load(d / "xsec.progress.json")
+    return {"dir": str(d), "now": time.time(), "tests": tests, "trades": trades, "xsec": xsec, "xsec_progress": xprog}
 
 
 @app.get("/")

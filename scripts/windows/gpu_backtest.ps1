@@ -44,7 +44,7 @@ $VPy = Join-Path $Dir ".venv\Scripts\python.exe"
 & $VPy -m pip install -q -U pip
 Write-Host "Downloading PyTorch CUDA (~2.5 GB). This can take a while on slow connections."
 & $VPy -m pip install torch --index-url https://download.pytorch.org/whl/cu126 --progress-bar on
-& $VPy -m pip install -q numpy pandas einops huggingface_hub safetensors tqdm httpx fastapi uvicorn chronos-forecasting timesfm
+& $VPy -m pip install -q numpy pandas einops huggingface_hub safetensors tqdm httpx fastapi uvicorn chronos-forecasting timesfm lightgbm scikit-learn
 & $VPy -c "import torch; ok=torch.cuda.is_available(); print('GPU:', torch.cuda.get_device_name(0) if ok else 'NOT AVAILABLE'); raise SystemExit(0 if ok else 3)"
 if ($LASTEXITCODE -ne 0) { throw "PyTorch does not see the GPU. Update the NVIDIA driver (GeForce Experience or nvidia.com) and run again." }
 
@@ -73,6 +73,14 @@ $Tests = @(
     @{n="timesfm_SOL_h24"; s="SOLUSDT"; m="timesfm-2.5"; h=24; r=330;  k=30},
     @{n="timesfm_SOL_h4";  s="SOLUSDT"; m="timesfm-2.5"; h=4;  r=2000; k=30}
 )
+# 3) daily candles, horizons 5 / 10 / 20 days (all available history up to the same end date)
+foreach ($m in @(@("kronos-small", "small"), @("chronos-2", "chronos"), @("timesfm-2.5", "timesfm"))) {
+    foreach ($s in "BTCUSDT", "SOLUSDT") {
+        foreach ($h in 5, 10, 20) {
+            $Tests += @{n="$($m[1])_$($s.Replace('USDT',''))_d$h"; s=$s; m=$m[0]; h=$h; r=600; k=30; i="1d"}
+        }
+    }
+}
 # results already computed in the cloud (same window): reuse them instead of recomputing
 $RepoRes = Join-Path $Src.FullName "results\backtest\long"
 if (Test-Path $RepoRes) {
@@ -80,7 +88,8 @@ if (Test-Path $RepoRes) {
         ForEach-Object { $dst = Join-Path $Out $_.Name; if (-not (Test-Path $dst)) { Copy-Item $_.FullName $dst } }
 }
 # plan for the monitor page, then start the monitor (http://localhost:8020) and open it
-$Tests | ForEach-Object { @{name=$_.n; symbol=$_.s; model=$_.m; horizon=$_.h} } | ConvertTo-Json | Set-Content "$Out\plan.json" -Encoding UTF8
+$Tests | ForEach-Object { @{name=$_.n; symbol=$_.s; model=$_.m; horizon=$_.h; interval=$(if ($_.i) { $_.i } else { "1h" })} } |
+    ConvertTo-Json | Set-Content "$Out\plan.json" -Encoding UTF8
 $env:KRONOS_BACKTEST_DIR = Join-Path $Dir $Out
 $busy = Get-NetTCPConnection -LocalPort 8020 -State Listen -ErrorAction SilentlyContinue
 if (-not $busy) {
@@ -95,7 +104,8 @@ foreach ($t in $Tests) {
     if (Test-Path $json) { Write-Host "skip $($t.n) (done)"; continue }
     Write-Host "-- $($t.n)" -ForegroundColor Yellow
     $wd = if ($t.m -like "kronos-*") { "weights\$($t.m)" } else { "" }
-    & $VPy -m app.backtest --symbol $t.s --interval 1h --model $t.m --weights-dir $wd `
+    $iv = if ($t.i) { $t.i } else { "1h" }
+    & $VPy -m app.backtest --symbol $t.s --interval $iv --model $t.m --weights-dir $wd `
         --horizon $t.h --step $t.h --rounds $t.r --samples $t.k --device cuda:0 --end 2026-11-08T00:00Z `
         --json $json --csv "$Out\$($t.n).csv"
     if ($LASTEXITCODE -ne 0) {
@@ -103,6 +113,14 @@ foreach ($t in $Tests) {
         Set-Content "$Out\$($t.n).failed" "exit code $LASTEXITCODE"
     } else { Remove-Item "$Out\$($t.n).failed" -ErrorAction SilentlyContinue }
 }
+
+$env:KRONOS_BACKTEST_DIR = Join-Path $Dir $Out
+Write-Host "-- 4) LightGBM with derivatives data (funding, premium, taker flow)" -ForegroundColor Yellow
+if (-not (Test-Path "$Out\lgbm_SOL_d10.json")) { & $VPy -m app.strategy deriv --symbols BTCUSDT,SOLUSDT --horizons 5,10 }
+Write-Host "-- 2) 20 coins, weekly long top-5 / short bottom-5" -ForegroundColor Yellow
+if (-not (Test-Path "$Out\xsec.json")) { & $VPy -m app.strategy xsec --models kronos-small,chronos-2,timesfm-2.5 --weeks 104 --device cuda }
+Write-Host "-- 1) Trading simulation of every test (costs, strong signals, trend filter, stops)" -ForegroundColor Yellow
+& $VPy -m app.strategy trade
 
 Write-Host "`n== RESULTS (copy everything below and paste it in the chat) ==" -ForegroundColor Green
 & $VPy scripts\summarize_long.py $Out

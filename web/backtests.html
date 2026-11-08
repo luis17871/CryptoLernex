@@ -104,6 +104,18 @@
   </section>
 
   <section class="card">
+    <div class="lbl">TRADING REAL <span class="r" id="trInfo">comisiones 0,14 % ida y vuelta · señal fuerte = P(sube) ≥ 65 % o ≤ 35 % · tendencia = media 50 días · stop = 1,5 σ</span></div>
+    <canvas class="ch" id="eq" style="height:260px"></canvas>
+    <div class="tblwrap2"><table id="trTbl"></table></div>
+  </section>
+
+  <section class="card">
+    <div class="lbl">ENTRE MONEDAS <span class="r" id="xsInfo">20 monedas · cada semana compra las 5 mejores y vende las 5 peores según cada modelo</span></div>
+    <canvas class="ch" id="xs" style="height:260px"></canvas>
+    <div class="tblwrap2"><table id="xsTbl"></table></div>
+  </section>
+
+  <section class="card">
     <div class="lbl">TODAS LAS PRUEBAS <span class="r">rondas que no se solapan</span></div>
     <div class="tblwrap2"><table id="sumTbl"></table></div>
   </section>
@@ -125,7 +137,8 @@ const vClass = (v) => (v === "ventaja" ? "ventaja" : v === "peor que azar" ? "pe
 const engName = (e) => (e === "bootstrap" ? "modelo base" : e);
 const day = (ts) => new Date(ts * 1000).toISOString().slice(0, 10);
 const label = (t) => { const m = t.meta || {}, p = t.plan || {}; const s = (m.symbol || p.symbol || "").replace("USDT", "");
-  const mod = (m.model || p.model || t.name.split("_")[0] || "").replace("kronos-", ""); const h = m.horizon || p.horizon; return s ? `${s} · ${mod} · ${h} h` : t.name; };
+  const mod = (m.model || p.model || t.name.split("_")[0] || "").replace("kronos-", ""); const h = m.horizon || p.horizon;
+  const u = (m.interval || p.interval) === "1d" ? "d" : "h"; return s ? `${s} · ${mod} · ${h} ${u}` : t.name; };
 let S = { data: null, sel: null, hover: null };
 try { S.sel = localStorage.getItem("bt.sel"); } catch (e) {}
 
@@ -133,7 +146,8 @@ async function tick() {
   try { const r = await fetch("/api/backtests"); S.data = await r.json(); $("liveTxt").textContent = "live"; render(); }
   catch (e) { $("liveTxt").textContent = "sin conexión"; }
 }
-const kronosOf = (t) => { const e = Object.keys(t.engines || {}).find((x) => x !== "bootstrap"); return e ? [e, t.engines[e]] : [null, {}]; };
+const isBase = (e) => e === "bootstrap" || e.startsWith("momentum");
+const kronosOf = (t) => { const e = Object.keys(t.engines || {}).find((x) => !isBase(x)); return e ? [e, t.engines[e]] : [null, {}]; };
 const current = () => { const T = S.data.tests; return T.find((t) => t.name === S.sel) || T.find((t) => t.status === "running") || T.find((t) => t.status === "done") || T[0]; };
 
 function render() {
@@ -150,7 +164,7 @@ function render() {
       <span class="mini"><i style="width:${p * 100}%"></i></span></button>`; }).join("");
   $("tabs").querySelectorAll(".tab").forEach((b) => (b.onclick = () => { S.sel = b.dataset.n; try { localStorage.setItem("bt.sel", S.sel); } catch (e) {} render(); }));
 
-  const [kn, k] = kronosOf(t), b = (t.engines || {}).bootstrap || {};
+  const [kn, k] = kronosOf(t), b = (t.engines || {}).bootstrap || Object.entries(t.engines || {}).find(([e]) => isBase(e))?.[1] || {};
   const m = t.meta || {};
   $("hcard").innerHTML = `<div class="h"><b>${esc((m.model || t.plan?.model || "-"))}</b><span>${esc((m.symbol || t.plan?.symbol || ""))} ${esc(m.interval || "1h")}</span></div>
     <div class="row"><span>horizonte</span>${m.horizon || t.plan?.horizon || "-"} velas</div>
@@ -206,7 +220,58 @@ function setup(cv) {
   const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
   g.font = "10px JetBrains Mono, monospace"; return [g, W, H];
 }
-function drawAll() { if (!S.data || !S.data.tests.length) return; const t = current(); hero(t); cum(t); cal(t); roll(t); }
+function drawAll() { if (!S.data) return; trading(); xsec(); if (!S.data.tests.length) return; const t = current(); hero(t); cum(t); cal(t); roll(t); }
+
+// ---- equity curves (log scale) shared by trading and cross-section
+const PAL = ["#2ee6c8", "#ffc24a", "#9b8cff", "#ff8a5c", "#3ddc84", "#5fb3ff", "#ff4d6d"];
+function equity(cv, series, empty) {
+  const [g, W, H] = setup(cv); const pad = { l: 44, r: 150, t: 10, b: 20 };
+  const all = series.flatMap((s) => s.curve); if (!all.length) { g.fillStyle = C.mute; g.fillText(empty, pad.l, H / 2); return; }
+  const t0 = Math.min(...all.map((p) => p[0])), t1 = Math.max(...all.map((p) => p[0]));
+  let lo = Math.min(...all.map((p) => p[1]), 1), hi = Math.max(...all.map((p) => p[1]), 1); lo = Math.log(lo * 0.97); hi = Math.log(hi * 1.03);
+  const x = (t) => pad.l + ((t - t0) / Math.max(1, t1 - t0)) * (W - pad.l - pad.r), y = (v) => pad.t + (1 - (Math.log(v) - lo) / (hi - lo)) * (H - pad.t - pad.b);
+  g.textBaseline = "middle";
+  [0.5, 0.75, 1, 1.25, 1.5, 2, 3].filter((v) => Math.log(v) > lo && Math.log(v) < hi).forEach((v) => {
+    g.strokeStyle = v === 1 ? C.gold + "99" : C.grid; g.setLineDash(v === 1 ? [4, 4] : []); g.beginPath(); g.moveTo(pad.l, y(v)); g.lineTo(W - pad.r, y(v)); g.stroke();
+    g.fillStyle = C.mute; g.fillText(((v - 1) * 100).toFixed(0) + "%", 4, y(v)); }); g.setLineDash([]);
+  g.textBaseline = "alphabetic"; [t0, (t0 + t1) / 2, t1].forEach((t) => g.fillText(day(t), Math.min(W - pad.r - 70, x(t)), H - 4));
+  const ends = [];
+  series.forEach((s) => { g.save(); if (s.glow) { g.shadowColor = s.color; g.shadowBlur = 8; } g.strokeStyle = s.color; g.lineWidth = s.width || 1.6;
+    g.setLineDash(s.dash || []); g.beginPath(); s.curve.forEach((p, i) => (i ? g.lineTo(x(p[0]), y(p[1])) : g.moveTo(x(p[0]), y(p[1])))); g.stroke(); g.restore();
+    const L = s.curve[s.curve.length - 1]; if (L) ends.push({ y: y(L[1]), s, v: L[1] }); });
+  ends.sort((a, b) => a.y - b.y); let last = -99;
+  ends.forEach((e) => { const yy = Math.max(e.y, last + 12); last = yy; g.fillStyle = e.s.color; g.textBaseline = "middle";
+    g.fillText(`${((e.v - 1) * 100).toFixed(0)}% ${e.s.name}`, W - pad.r + 6, yy); });
+}
+const metricRow = (name, m, extra = "") => `<tr><td>${esc(name)}</td><td class="${m.total_return > 0 ? "up" : "dn"}">${spct(m.total_return)}</td>
+  <td>${m.sharpe != null ? m.sharpe.toFixed(2) : "-"}</td><td class="dn">${pct(m.max_dd, 0)}</td><td>${m.trades ?? "-"}</td>
+  <td>${pct(m.win_rate, 0)}</td><td>${m.profit_factor != null ? m.profit_factor.toFixed(2) : "-"}</td>${extra}</tr>`;
+function trading() {
+  const t = S.data.tests.length ? current() : null; const doc = t && S.data.trades ? S.data.trades[t.name] : null;
+  const head = "<tr><th>estrategia</th><th>retorno</th><th>Sharpe</th><th>caída máx.</th><th>operaciones</th><th>ganadoras</th><th>profit factor</th></tr>";
+  if (!doc) { $("trTbl").innerHTML = head + `<tr><td colspan=7 class="muted">Se calcula al terminar las pruebas de dirección (paso final del script).</td></tr>`; equity($("eq"), [], "sin datos de trading todavía"); return; }
+  const series = [], rows = [];
+  Object.entries(doc.engines).forEach(([e, vs], ei) => Object.entries(vs).forEach(([v, m], vi) => {
+    if (v === "_buyhold") return;
+    const kron = e !== "bootstrap"; const best = v === "fuertes+tendencia+stop";
+    if (kron || best) series.push({ name: `${kron ? e.replace("kronos-", "") : "base"} ${v.replace("fuertes", "fuert.").replace("tendencia", "tend.")}`, curve: m.curve,
+      color: kron ? PAL[vi % PAL.length] : "#5f7385", glow: kron && best, width: kron && best ? 2.4 : 1.4, dash: kron ? [] : [3, 3] });
+    rows.push(metricRow(`${engName(e)} · ${v}`, m)); }));
+  const bh = Object.values(doc.engines)[0]._buyhold; if (bh) { series.push({ name: "buy & hold", curve: bh.curve, color: C.white, width: 1.4, dash: [6, 4] }); rows.push(metricRow("buy & hold", bh)); }
+  $("trTbl").innerHTML = head + rows.join(""); equity($("eq"), series, "");
+}
+function xsec() {
+  const d = S.data.xsec, pr = S.data.xsec_progress;
+  const head = "<tr><th>modelo</th><th>retorno</th><th>Sharpe</th><th>caída máx.</th><th>semanas</th><th>ganadoras</th><th>profit factor</th><th>IC medio</th><th>t del IC</th><th>IC &gt; 0</th></tr>";
+  if (!d) { $("xsTbl").innerHTML = head + `<tr><td colspan=10 class="muted">${pr && pr.status === "running" ? `corriendo: semana ${pr.done} de ${pr.total} · faltan ${dur(pr.eta_s)}` : "en cola (después de las pruebas de dirección)"}</td></tr>`;
+    equity($("xs"), [], "sin datos todavía"); return; }
+  const series = Object.entries(d.strategies).map(([n, m], i) => ({ name: n.replace("kronos-", ""), curve: m.curve, color: n.includes("_") ? "#5f7385" : PAL[i % PAL.length],
+    dash: n.includes("_") ? [3, 3] : [], glow: !n.includes("_"), width: n.includes("_") ? 1.4 : 2.2 }));
+  $("xsTbl").innerHTML = head + Object.entries(d.strategies).map(([n, m]) => metricRow(n, m,
+    `<td class="${m.ic_mean > 0 ? "up" : "dn"}">${m.ic_mean != null ? m.ic_mean.toFixed(3) : "-"}</td><td>${m.ic_tstat.toFixed(2)}</td><td>${pct(m.ic_positive, 0)}</td>`)).join("");
+  $("xsInfo").textContent = `${d.meta.universe.length} monedas · ${d.meta.weeks} semanas · compra 5 / vende 5 · comisiones incluidas · IC = correlación de rangos predicho vs real (t > 2 = significativo)`;
+  equity($("xs"), series, "");
+}
 
 // ---- hero: real price + every forecast as a glowing fan (p10-p90) with its median
 function hero(t) {
